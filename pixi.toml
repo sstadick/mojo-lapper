@@ -5,7 +5,7 @@ channels = [
     "https://repo.prefix.dev/modular-community",
     "conda-forge",
 ]
-name = "ksearch"
+name = "mojo-lapper"
 platforms = ["osx-arm64"]
 version = "0.1.0"
 

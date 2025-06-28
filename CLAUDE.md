@@ -4,7 +4,7 @@ This file provides guidance to LLMs when working with code in this repository.
 
 ## Overview
 
-This is the ksearch repository. It will contain code for benchmarking binary
+This is the lapper repository. It will contain code for benchmarking binary
 and kary search on CPU and GPU. It uses the Mojo language.
 
 Mojo is a programming language that bridges the gap between research and production
@@ -34,7 +34,7 @@ pixi run t --co
 pixi run t --filter test_binary_search
 
 # Run test via its main function for print output when the test is passing
-pixi run r tests/ksearch/cpu/test_naive_binary.mojo
+pixi run r tests/lapper/cpu/test_naive_binary.mojo
 ```
 
 Tests are run with `-D ASSERT=all` by default to enable bounds checking in stdlib.
@@ -51,7 +51,7 @@ pixi run bc
 # Build CPU benchmarks
 pixi run bg
 
-# Run CPU benchmarks
+# Run GPU benchmarks
 ./gpu_bench
 ```
 
@@ -75,7 +75,7 @@ pixi run mojo doc --diagnose-missing-doc-strings --validate-doc-strings \
 
 ### Repository Structure
 
-- `ksearch/`: Library for k-ary search
+- `lapper/`: Library for k-ary search
     - `cpu`: cpu related code
     - `gpu`: gpu related code
 - `benchmarks`: Benchmarking tooling
@@ -146,3 +146,7 @@ guarantees:
 - Mojo API docs: <https://docs.modular.com/llms-mojo.txt>
 - Python API docs: <https://docs.modular.com/llms-python.txt>
 - Comprehensive docs: <https://docs.modular.com/llms-full.txt>
+
+## Mojo Language Memories
+
+- it's `mut` not `inout`
