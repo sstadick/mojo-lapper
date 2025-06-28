@@ -96,17 +96,17 @@ fn naive_bsearch[
     if values[0] >= value:
         return 0
 
-    var high = UInt(len(values))
-    var low = UInt(0)
+    var high = UInt32(len(values))
+    var low = UInt32(0)
 
     while high - low > 1:
         var mid = (high + low) // 2
-        if values[Int(mid)] < value:
+        if values[mid] < value:
             low = mid
         else:
             high = mid
 
-    return high
+    return UInt(high)
 
 
 @always_inline
@@ -196,8 +196,8 @@ fn offset_bsearch[
     if len(values) == 0 or values[0] >= value:
         return 0
 
-    var step = _lpow2(UInt64(len(values)))
-    var offset = UInt64(len(values))
+    var step = _lpow2(UInt32(len(values)))
+    var offset = UInt32(len(values))
     while step > 0:
         if step <= offset:
             var idx = offset - step

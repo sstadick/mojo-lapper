@@ -357,6 +357,8 @@ fn lower_bound[
     var loc = values[k] if k <= n else values[0]
     k = 2 * k + UInt32(loc < value)
 
+    # TODO: add prefetch, gate as gpu only
+
     # Restore actual index using exact C++ bit manipulation
     var ffs_result = count_trailing_zeros(~k) + 1
     k >>= ffs_result
