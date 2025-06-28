@@ -1,0 +1,20 @@
+[workspace]
+authors = ["Seth Stadick <sstadick@gmail.com>"]
+channels = [
+    "https://conda.modular.com/max-nightly",
+    "https://repo.prefix.dev/modular-community",
+    "conda-forge",
+]
+name = "ksearch"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+t = { cmd = "pixi run mojo test -D ASSERT=all -I . tests" }
+r = { cmd = "pixi run mojo run -I ." }
+bc = { cmd = "pixi run mojo build --march native -I . -o cpu_bench benchmarks/bench_cpu.mojo" }
+bg = { cmd = "pixi run mojo build --march native -I . -o gpu_bench benchmarks/bench_gpu.mojo" }
+
+[dependencies]
+modular = "=25.4.0"
+extramojo = ">=0.16.0,<0.17"
