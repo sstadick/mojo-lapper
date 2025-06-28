@@ -139,6 +139,7 @@ struct Eytzinger[dtype: DType](Copyable, Movable):
     var lookup: List[Scalar[dtype]]
 
 
+# TODO, allow this to take mutable spans for the layout and lookup so it can write directly to hostbuffers
 fn eytzinger_with_lookup[
     dtype: DType
 ](read original: Span[Scalar[dtype]]) raises -> Eytzinger[dtype]:
@@ -341,7 +342,7 @@ fn lower_bound[
     Space Complexity: O(1)
     """
     constrained[dtype is not DType.invalid, "dtype must be valid."]()
-    alias FETCH_OPTS = PrefetchOptions().for_read().high_locality().to_data_cache()
+    # alias FETCH_OPTS = PrefetchOptions().for_read().high_locality().to_data_cache()
 
     # Use fixed-iteration version like C++ for better edge case handling
     var iters = Int(32 - count_leading_zeros(UInt32(len(values) + 1)) - 1)
@@ -349,6 +350,8 @@ fn lower_bound[
 
     # Execute fixed number of iterations
     for _ in range(iters):
+        # prefetch not doing anything
+        # prefetch[FETCH_OPTS](values.unsafe_ptr().offset(k * 16))
         k = 2 * k + UInt32(values[k] < value)
 
     # Final comparison with predication (handle edge cases)

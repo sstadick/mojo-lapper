@@ -40,7 +40,7 @@ Thread Safety: All functions are thread-safe (no shared state).
 """
 
 from bit import count_leading_zeros
-from sys import llvm_intrinsic
+from sys import llvm_intrinsic, prefetch, PrefetchOptions
 from memory import UnsafePointer
 
 from ExtraMojo.math.ops import saturating_sub
@@ -272,8 +272,12 @@ fn lower_bound[
         var half = length >> 1
         length -= half
         # Prefetch does not seem to help on M3
-        # prefetch[FETCH_OPTS](ptr.offset(cursor + (length >> 1) - 1))
-        # prefetch[FETCH_OPTS](ptr.offset(cursor + half + (length >> 1) - 1))
+        # prefetch[FETCH_OPTS](
+        #     values.unsafe_ptr().offset(cursor + (length >> 1) - 1)
+        # )
+        # prefetch[FETCH_OPTS](
+        #     values.unsafe_ptr().offset(cursor + half + (length >> 1) - 1)
+        # )
 
         # Should be equivalent
         # cursor += UInt(half) if values[cursor + half - 1] < value else 0
