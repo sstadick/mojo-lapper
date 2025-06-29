@@ -30,7 +30,7 @@ GPU Architecture Support:
 Usage Pattern:
     ```mojo
     # Setup GPU context and data
-    var gpu_lapper = Lapper[data_location="gpu"](intervals)
+    var gpu_lapper = Lapper[owns_data=False](intervals)
     
     # Process batch of queries on GPU
     var query_results = process_gpu_batch(gpu_lapper, query_list)

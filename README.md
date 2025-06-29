@@ -2,16 +2,15 @@
 
 **Interval overlap detection library for Mojo with CPU and GPU support**
 
-[![Tests](https://img.shields.io/badge/tests-50%2F50%20passing-brightgreen)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-blue)]()
 
-This project implements the BITS (Binary Interval Search Tree) algorithm for efficient interval overlap detection, with both CPU and GPU implementations in Mojo. The BITS algorithm, originally described by [Layer et al.](https://academic.oup.com/bioinformatics/article/29/1/1/273289), uses dual binary searches to count overlaps in O(log n) time. While CUDA implementations exist, this demonstrates how classical algorithms can be adapted to GPU in Mojo's unified programming model.
+This project implements the BITS (Binary Interval Search Tree) algorithm for efficient interval overlap detection, with both CPU and GPU implementations in Mojo. The BITS algorithm, originally described by [Layer et al.](https://academic.oup.com/bioinformatics/article/29/1/1/273289), uses dual binary searches to count overlaps in O(log n) time. This implementation reinforces how classical algorithms can be adapted to GPU in Mojo's unified programming model. The Lapper data structure will later be filled out further continuing to support both GPU and CPU operations.
 
 ## GPU Count Kernel Implementation
 
 The core contribution is a GPU kernel implementing the BITS algorithm for parallel interval counting:
 
-```mojo
+```python
 fn count_overlaps_kernel(
     starts: UnsafePointer[UInt32],           # Sorted interval starts
     stops: UnsafePointer[UInt32],            # Interval stops (same order)
@@ -48,14 +47,14 @@ fn count_overlaps_kernel(
 
 **Algorithm**: Each GPU thread independently executes the BITS algorithm using dual binary searches on sorted interval arrays. The BITS approach counts overlaps as `total_intervals - excluded_before - excluded_after`, avoiding the linear scan required by naive methods.
 
-**Performance**: Processes thousands of overlap queries in parallel, with each query completing in O(log n) time. Binary search performs reasonably well on GPU despite branching, particularly when threads in a warp follow similar execution paths.
+**Performance**: Processes thousands of overlap queries in parallel, with each query completing in O(log n) time. Binary search performs reasonably well on GPU despite branching, particularly when threads in a warp follow similar execution paths. Sorting the 
 
 
 ## Example Usage
 
 Here's a complete example showing CPU and GPU usage:
 
-```mojo
+```python
 from lapper import Lapper, Interval, count_overlaps_kernel
 from gpu.host import DeviceContext
 
@@ -78,7 +77,7 @@ def main():
     cpu_lapper.find(1200, 1800, cpu_results)
     print("CPU found", len(cpu_results), "overlapping genes")
     for gene in cpu_results:
-        print("  Gene", gene[].val, "at [" + str(gene[].start) + "," + str(gene[].stop) + ")")
+        print("  Gene", gene.val, "at [" + String(gene.start) + "," + String(gene.stop) + ")")
     
     # Count overlaps (faster than find when you only need the count)
     var cpu_count = cpu_lapper.count(1200, 1800)
@@ -152,18 +151,18 @@ def main():
     for i in range(num_queries):
         var query = batch_queries[i]
         var gpu_count = host_output[i]
-        print("  Query [" + str(query.start) + "," + str(query.stop) + ") count:", gpu_count)
+        print("  Query [" + String(query.start) + "," + String(query.stop) + ") count:", gpu_count)
     
     print("\nGPU demonstrates how classical CPU algorithms adapt seamlessly to parallel execution!")
 ```
 
 ## Key Observations
 
-**Algorithm Adaptation**: The BITS algorithm, originally designed for CPU execution, adapts well to GPU with Mojo's unified syntax. The same algorithmic logic runs on both platforms with minimal code changes.
+**Algorithm Adaptation**: The BITS algorithm, adapts well to GPU with Mojo's unified syntax. The same algorithmic logic runs on both platforms with minimal code changes.
 
 **GPU Binary Search**: While binary search has irregular memory access patterns, it can work reasonably well on GPU when threads exhibit some coherence. Performance depends heavily on data patterns and warp divergence.
 
-**Unified Programming**: Mojo's shared syntax between CPU and GPU simplifies porting algorithms and experimenting with different execution strategies without rewriting core logic.
+**Unified Programming**: Mojo's shared syntax between CPU and GPU simplifies porting algorithms and experimenting with different execution strategies without rewriting core logic. Specifically the same data structure, `Lapper` can be used on the GPU and CPU here.
 
 ## Architecture
 
@@ -193,37 +192,44 @@ mojo-lapper/
 
 | Algorithm | Time (ms) | Relative Performance |
 |-----------|-----------|---------------------|
-| Naive Binary Search | 5.87 | 1.0x (baseline) |
+| Binary Search | 5.87 | 1.0x (baseline) |
 | Offset Binary Search | 6.60 | 0.89x |
 | Lower Bound | 6.34 | 0.93x |
 | **Eytzinger Layout** | **2.42** | **2.4x** |
 
 The Eytzinger layout shows substantial improvement due to better cache locality.
 
-### CPU vs GPU Lapper Operations
-
-| Operation | CPU (ms) | GPU (ms) | Notes |
-|-----------|----------|----------|-------|
-| Count overlaps | 2.18 | 0.018-0.026 | GPU benefits from parallel queries |
-| Find overlaps | 14.40 | 0.25-0.95 | GPU performance scales with batch size |
-
 ### GPU Binary Search Results
 
-GPU binary search shows consistent microsecond-level performance across different thread block sizes, demonstrating that even "GPU-unfriendly" algorithms can work well when properly parallelized.
+| Algorithm | Time Range (ms) | Performance Notes |
+|-----------|-----------------|-------------------|
+| Eytzinger Lower Bound | 0.017-0.137 | Consistent across block sizes 32-1024 |
+| Binary Search Lower Bound | 0.017-0.137 | Similar performance to Eytzinger on GPU |
+
+GPU binary search shows consistent microsecond-level performance across different thread block sizes, for both search implementations. The Eytzinger layout performance does not translate to the GPU.
+
+### CPU vs GPU Lapper Operations
+
+| Operation | CPU (ms) | GPU (ms) | Speedup | Notes |
+|-----------|----------|----------|---------|-------|
+| Count overlaps (BITS) | 1.12 | 0.008 | 140x | GPU BITS algorithm highly optimized |
+| Count overlaps (Naive) | 10.89 | 0.11 | 99x | GPU benefits from parallel queries |
+
+Note: GPU benchmarks exclude data transfer time. Including transfer overhead, GPU BITS is ~60-120x faster than CPU.
 
 ## API Overview
 
 ### Core Types
 
 **`Interval`**: Represents a half-open interval [start, stop) with associated data
-```mojo
+```python
 var gene = Interval(start=1000, stop=2000, value=42)
 ```
 
 **`Lapper`**: Data structure for efficient interval overlap queries
-```mojo
-var cpu_lapper = Lapper(intervals)                    # CPU version
-var gpu_lapper = Lapper[data_location="gpu"](intervals)  # GPU version
+```python
+var cpu_lapper = Lapper(intervals)                   # CPU version (owns memory)
+var gpu_lapper = Lapper[owns_data=False](intervals)  # GPU version (external memory)
 ```
 
 ### Key Methods
@@ -306,39 +312,22 @@ pixi run bl       # Build Lapper benchmarks
 
 ## Further Work
 
-This project demonstrates the core feasibility of GPU-accelerated interval operations, but several opportunities remain for future development:
+This project demonstrates the core feasibility of co-CPU/GPU-accelerated interval operations, but several opportunities remain for future development:
 
-**Algorithm Extensions:**
-- **Eytzinger GPU Kernels**: Adapt cache-optimized Eytzinger layout for GPU memory hierarchies
-- **Parallel Find Operations**: GPU kernels that materialize actual overlapping intervals (not just counts)
-- **Advanced Memory Management**: Custom GPU memory allocators for dynamic result sizing
+- **Reduce Levels**: Adapt cache-optimized Eytzinger layout for GPU memory hierarchies with [k-ary search](https://arxiv.org/abs/2506.01576)
+- **SIMD/SIMT**: Parallelize the linear search portion of `find`
+- **Sort on GPU**: Construction involves at least two sorts, which could be done on the GPU, or at least moved to radix sort
 - **Multi-GPU Scaling**: Distribute large interval datasets across multiple GPUs
+- **Complete the GPU Find Kernel**: GPU kernels that materialize actual overlapping intervals (not just counts)
+    - Preprocessing with BITS to determine the number of slots for output
+- **Complete the Lapper API**: Lapper is a port of my [`rust-lapper`](https://github.com/sstadick/rust-lapper/tree/master) which is a port of [`nim-lapper`](https://github.com/brentp/nim-lapper) from Brent Pendersen
+    - **Generic**: Update Lapper and Interval to be generic over integral types
+    - **Result Streaming**: Iterator-based APIs for processing large result sets for CPU api
 
-**Performance Optimizations:**
-- **Warp-Level Primitives**: Leverage GPU warp shuffle and ballot operations for enhanced cooperation
-- **Shared Memory Utilization**: Cache frequently accessed interval data in GPU shared memory
-- **Stream Processing**: Overlap computation with data transfer using CUDA streams
-- **Mixed Precision**: Explore FP16 or INT16 data types for memory bandwidth optimization
 
-**API Enhancements:**
-- **Streaming Queries**: Support for continuous query streams without memory reallocation
-- **Batched Construction**: Efficient APIs for building multiple Lapper instances simultaneously
-- **Result Streaming**: Iterator-based APIs for processing large result sets
-- **Memory Pool Management**: Reusable memory pools for reduced allocation overhead
-
-**Research Directions:**
-- **Adaptive Block Sizing**: Dynamic GPU thread block sizing based on data characteristics
-- **Hybrid CPU-GPU Scheduling**: Intelligent workload distribution between CPU and GPU
-- **Compressed Intervals**: Space-efficient representations for large-scale genomics data
-- **Approximate Counting**: Probabilistic algorithms for ultra-high throughput scenarios
-
-**Integration Opportunities:**
-- **Bioinformatics Pipelines**: Direct integration with popular genomics frameworks
-- **Time Series Databases**: Native support in temporal databases and analytics engines
-- **Geographic Information Systems**: Spatial interval operations for GIS applications
-- **Real-time Analytics**: Low-latency interval processing for streaming data platforms
-
-The foundation established here opens numerous paths for both algorithmic innovation and practical application development.
+## Bugs Submitted
+- [rust-lapper](https://github.com/sstadick/rust-lapper/blob/828fec77e0f94c8b63ad54af223f005cb903f450/src/lib.rs#L598) is not properly handling the half-open intervals and is using full-open intervals as in the BITS paper. A PR will be submitted to fix it.
+- [UInt64 vs UInt32 in Mojo](https://github.com/modular/modular/issues/4927) Notably different code gen and performance when using UInt64 vs UInt32 in the binary search benchmarks.
 
 ## References
 

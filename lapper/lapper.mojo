@@ -182,7 +182,7 @@ struct Interval(
 
 
 @fieldwise_init
-struct Lapper[*, data_location: String = "cpu"](Sized):
+struct Lapper[*, owns_data: Bool = True](Sized):
     """High-performance data structure for fast interval overlap detection.
 
     Lapper stores a collection of intervals and provides efficient algorithms for
@@ -208,7 +208,7 @@ struct Lapper[*, data_location: String = "cpu"](Sized):
     - **max_len**: Maximum interval length (for optimization bounds)
 
     Template Parameters:
-    - **data_location**: "cpu" or "gpu" - determines execution target and optimizations
+    - **owns_data**: True if the Lapper owns its memory, False if using external pointers
 
     Performance Characteristics:
     - **Construction**: O(n log n) time, O(n) space
@@ -238,7 +238,7 @@ struct Lapper[*, data_location: String = "cpu"](Sized):
         var count = lapper.count(12, 18)
 
         # GPU usage for high-throughput batch processing
-        var gpu_lapper = Lapper[data_location="gpu"](intervals)
+        var gpu_lapper = Lapper[owns_data=False](intervals)
         # ... process large batches of queries on GPU
         ```
 
@@ -247,9 +247,9 @@ struct Lapper[*, data_location: String = "cpu"](Sized):
     of Interval structs for better cache performance and vectorization potential.
     This layout is particularly beneficial for binary search operations.
 
-    GPU Considerations:
-    When data_location="gpu", the data is prepared for GPU kernel execution with
-    optimized memory layouts for coalesced access patterns and parallel processing.
+    Memory Management:
+    When owns_data=False, the Lapper uses external memory pointers and does not
+    manage memory allocation/deallocation. This is useful for GPU scenarios.
     """
 
     alias I = Interval
@@ -356,11 +356,11 @@ struct Lapper[*, data_location: String = "cpu"](Sized):
         device_stops: DeviceBuffer[DType.uint32],
         device_vals: DeviceBuffer[DType.int32],
         device_stops_sorted: DeviceBuffer[DType.uint32],
-    ) raises -> Lapper[data_location="gpu"]:
+    ) raises -> Lapper[owns_data=False]:
         var length = len(intervals)
         var max_len = UInt32(0)
         var lapper = Lapper[
-            data_location="gpu"
+            owns_data=False
         ](  # need to call it this so it doesn't try to drop the mem
             host_starts.unsafe_ptr(),
             host_stops.unsafe_ptr(),
@@ -376,7 +376,7 @@ struct Lapper[*, data_location: String = "cpu"](Sized):
         host_stops_sorted.enqueue_copy_to(device_stops_sorted)
         ctx.synchronize()
 
-        return Lapper[data_location="gpu"](
+        return Lapper[owns_data=False](
             device_starts.unsafe_ptr(),
             device_stops.unsafe_ptr(),
             device_vals.unsafe_ptr(),
@@ -390,7 +390,7 @@ struct Lapper[*, data_location: String = "cpu"](Sized):
 
     fn __del__(owned self):
         @parameter
-        if data_location != "gpu":
+        if owns_data:
             self.starts.free()
             self.stops.free()
             self.vals.free()
@@ -620,7 +620,7 @@ fn find_overlaps_kernel(
     # TODO: come back to the idea that this should be an array of structs where start and stop are co-located, but what about SIMT!?
     # TODO: this is just counting for now because we don't know how much space to allocate till
     # the coutns method is worked out
-    var lapper = Lapper[data_location="gpu"](
+    var lapper = Lapper[owns_data=False](
         starts, stops, vals, stops_sorted, length, max_len
     )
 
@@ -767,7 +767,7 @@ fn count_overlaps_kernel(
     GPUs when implemented thoughtfully with proper parallelization strategies.
     """
     # TODO: come back to the idea that this should be an array of structs where start and stop are co-located, but what about SIMT!?
-    var lapper = Lapper[data_location="gpu"](
+    var lapper = Lapper[owns_data=False](
         starts, stops, vals, stops_sorted, length, max_len
     )
 
