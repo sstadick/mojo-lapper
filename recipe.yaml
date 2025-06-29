@@ -23,6 +23,7 @@ requirements:
       - extramojo ${{ extramojo_version }}
   run:
       - modular ${{ modular_version }}
+      - extramojo ${{ extramojo_version }}
 
 tests:
   - script:
