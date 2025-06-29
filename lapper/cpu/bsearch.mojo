@@ -296,7 +296,6 @@ fn lower_bound[
     return UInt(cursor)
 
 
-
 fn upper_bound[
     dtype: DType
 ](values: Span[Scalar[dtype]], key: Scalar[dtype]) -> UInt:

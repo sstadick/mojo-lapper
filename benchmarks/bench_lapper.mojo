@@ -42,8 +42,10 @@ def generate_intervals(
     return intervals
 
 
-def generate_queries(num_queries: Int, max_coordinate: Int) -> List[Interval]:
-    """Generate random query intervals."""
+def generate_queries(
+    num_queries: Int, max_coordinate: Int, sorted: Bool = True
+) -> List[Interval]:
+    """Generate random query intervals, optionally sorted by start position."""
     var queries = List[Interval]()
 
     var starts = List[UInt32](unsafe_uninit_length=num_queries)
@@ -56,6 +58,10 @@ def generate_queries(num_queries: Int, max_coordinate: Int) -> List[Interval]:
         var start = starts[i]
         var stop = start + lengths[i]
         queries.append(Interval(start, stop, 0))
+
+    # Sort queries by start position if requested
+    if sorted:
+        sort(queries)
 
     return queries
 
@@ -246,8 +252,6 @@ def benchmark_lapper_count():
                 grid_dim=grid_dim,
                 block_dim=block_dim,
             )
-            device_output.enqueue_copy_to(host_output)
-            gpu_ctx.synchronize()
 
         b.iter_custom[kernel_launch](ctx)
 
@@ -292,8 +296,6 @@ def benchmark_lapper_count():
                 grid_dim=grid_dim,
                 block_dim=block_dim,
             )
-            device_output.enqueue_copy_to(host_output)
-            gpu_ctx.synchronize()
 
         b.iter_custom[kernel_launch](ctx)
 
@@ -436,6 +438,104 @@ def benchmark_lapper_count():
         )
 
 
+def benchmark_query_sorting_impact():
+    """Compare performance of sorted vs unsorted queries."""
+    alias num_intervals = 100_000
+    alias num_queries = 10_000
+    alias max_coordinate = 1_000_000
+
+    print("=== Query Sorting Performance Comparison ===")
+
+    # Use same seed for fair comparison
+    seed(42)
+    var intervals = generate_intervals(num_intervals, max_coordinate)
+
+    # Generate sorted and unsorted queries with same seed
+    seed(42)  # Reset seed for consistent data
+    var sorted_queries = generate_queries(
+        num_queries, max_coordinate, sorted=True
+    )
+
+    seed(42)  # Reset seed again
+    var unsorted_queries = generate_queries(
+        num_queries, max_coordinate, sorted=False
+    )
+
+    print("Creating CPU Lapper...")
+    var cpu_lapper = Lapper(intervals)
+
+    var b = Bench()
+
+    @parameter
+    @always_inline
+    fn bench_sorted_queries(mut b: Bencher):
+        """Benchmark CPU BITS count operations with sorted queries."""
+
+        @parameter
+        @always_inline
+        fn run():
+            var total_count: UInt32 = 0
+            for query in sorted_queries:
+                var count = cpu_lapper.count(query.start, query.stop)
+                total_count += count
+            keep(total_count)
+
+        b.iter[run]()
+
+    @parameter
+    @always_inline
+    fn bench_unsorted_queries(mut b: Bencher):
+        """Benchmark CPU BITS count operations with unsorted queries."""
+
+        @parameter
+        @always_inline
+        fn run():
+            var total_count: UInt32 = 0
+            for query in unsorted_queries:
+                var count = cpu_lapper.count(query.start, query.stop)
+                total_count += count
+            keep(total_count)
+
+        b.iter[run]()
+
+    # Run benchmarks
+    b.bench_function[bench_sorted_queries](BenchId("CPU BITS - Sorted Queries"))
+    b.bench_function[bench_unsorted_queries](
+        BenchId("CPU BITS - Unsorted Queries")
+    )
+
+    print(b)
+
+    # Verify both produce same results
+    var sorted_total: UInt32 = 0
+    var unsorted_total: UInt32 = 0
+
+    for i in range(min(5, len(sorted_queries))):
+        var sorted_count = cpu_lapper.count(
+            sorted_queries[i].start, sorted_queries[i].stop
+        )
+        var unsorted_count = cpu_lapper.count(
+            unsorted_queries[i].start, unsorted_queries[i].stop
+        )
+        sorted_total += sorted_count
+        unsorted_total += unsorted_count
+
+    print(
+        String("Validation: sorted_total={}, unsorted_total={}").format(
+            sorted_total, unsorted_total
+        )
+    )
+    print("Query order comparison:")
+    for i in range(min(5, len(sorted_queries))):
+        print(
+            String("  Sorted[{}]: start={}, Unsorted[{}]: start={}").format(
+                i, sorted_queries[i].start, i, unsorted_queries[i].start
+            )
+        )
+
+
 def main():
+    benchmark_query_sorting_impact()
+    print("\n" + "=" * 50 + "\n")
     seed(42)
     benchmark_lapper_count()

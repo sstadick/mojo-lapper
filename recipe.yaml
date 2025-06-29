@@ -1,0 +1,53 @@
+context:
+  version: "0.1.0"
+  max_version: "=25.4"
+  extramojo_version: "=0.15"
+
+package:
+  name: "lapper"
+  version: ${{ version }}
+
+source:
+  # - git: https://github.com/ExtraMojo/ExtraMojo.git
+  #   rev: 3282009a7cad20b77072b1cb930d96ea4bb73668
+  path: .
+  use_gitignore: true
+
+build:
+  number: 0
+  script:
+    - mojo package lapper -o ${{ PREFIX }}/lib/mojo/lapper.mojopkg
+requirements:
+  host:
+      - modular ${{ modular_version }}
+      - extramojo ${{ extramojo_version }}
+  run:
+      - modular ${{ modular_version }}
+
+tests:
+  - script:
+      - if: unix
+        then:
+          - mojo test -I ${{ PREFIX }}/lib/mojo/lapper.mojopkg tests
+    requirements:
+      run:
+        - modular ${{ modular_version }}
+        - extramojo ${{ extramojo_version }}
+    files:
+      source:
+        - tests
+
+
+about:
+  homepage: https://github.com/sstadick/mojo-lapper
+  license: "Unlicense OR MIT"
+  license_file:
+    - LICENSE-MIT
+    - UNLICENSE
+  summary: Interval queries on GPU and CPU.
+  repository: https://github.com/sstadick/mojo-lapper
+
+extra:
+  maintainers:
+    - sstadick
+  project_name: lapper

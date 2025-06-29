@@ -1,6 +1,6 @@
 from ExtraMojo.math.ops import saturating_sub
 
-from lapper.cpu.bsearch import lower_bound, bsearch_seq, upper_bound
+from lapper.cpu.bsearch import lower_bound, upper_bound
 
 from gpu.host import DeviceContext, HostBuffer, DeviceBuffer
 from gpu import thread_idx, block_idx, block_dim, warp, barrier

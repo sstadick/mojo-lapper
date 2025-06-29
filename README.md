@@ -1,4 +1,4 @@
-# Mojo-Lapper
+# Lapper
 
 **Interval overlap detection library for Mojo with CPU and GPU support**
 

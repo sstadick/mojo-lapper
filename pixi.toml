@@ -3,11 +3,19 @@ authors = ["Seth Stadick <sstadick@gmail.com>"]
 channels = [
     "https://conda.modular.com/max-nightly",
     "https://repo.prefix.dev/modular-community",
+    "https://prefix.dev/pixi-build-backends",
     "conda-forge",
 ]
-name = "mojo-lapper"
 platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
+preview = ["pixi-build"]
+
+[package]
+name = "mojo-lapper"
+license = "MIT"
 version = "0.1.0"
+
+[package.build]
+backend = { name = "pixi-build-rattler-build", version = "0.1.*" }
 
 [tasks]
 t = { cmd = "pixi run mojo test -D ASSERT=all -I . tests" }
@@ -18,4 +26,5 @@ bl = { cmd = "pixi run mojo build --march native -I . -o lapper_bench benchmarks
 
 [dependencies]
 modular = "=25.4.0"
-extramojo = ">=0.16.0,<0.17"
+extramojo = "=0.15.0"
+rattler-build = "*"
