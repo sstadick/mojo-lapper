@@ -336,6 +336,44 @@ This project demonstrates the core feasibility of co-CPU/GPU-accelerated interva
 - [Rust Lapper](https://github.com/sstadick/rust-lapper)
 - [BITS Algorithm Paper](https://academic.oup.com/bioinformatics/article/29/1/1/273289)
 
+## Install
+
+Until this is on modular-community, you can depend on it directly from git.
+
+```toml
+# pixi.toml
+[workspace]
+authors = ["Mojo <mojo@hotmail.com>"]
+channels = ["https://conda.modular.com/max-nightly", "conda-forge", "https://prefix.dev/pixi-build-backends", "https://repo.prefix.dev/modular-community",]
+platforms = ["osx-arm64"]
+preview = ["pixi-build"]
+
+[package]
+name = "example"
+version = "0.1.0"
+
+[package.build]
+backend = { name = "pixi-build-rattler-build", version = "0.1.*" }
+
+[tasks]
+
+[dependencies]
+modular = "=25.4.0"
+lapper = {git = "https://github.com/sstadick/mojo-lapper.git"}
+```
+
+```python
+# main.mojo
+from lapper.lapper import Lapper, Interval as Iv
+
+
+def main():
+    var intervals: List[Iv] = [Iv(1, 5, 0), Iv(2, 6, 0), Iv(6, 10, 0)]
+    var lapper = Lapper(intervals)
+    print(lapper.count(2, 6))
+```
+
+
 ---
 
 *Built with Mojo - Exploring the boundaries between CPU and GPU computing*
