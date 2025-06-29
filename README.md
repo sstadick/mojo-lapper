@@ -24,7 +24,7 @@ fn count_overlaps_kernel(
     output_length: UInt,                     # Number of queries
 ):
     # Create GPU lapper instance from device pointers
-    var lapper = Lapper[data_location="gpu"](
+    var lapper = Lapper[owns_data=False](
         starts, stops, vals, stops_sorted, length, max_len
     )
 
