@@ -14,6 +14,7 @@ t = { cmd = "pixi run mojo test -D ASSERT=all -I . tests" }
 r = { cmd = "pixi run mojo run -I ." }
 bc = { cmd = "pixi run mojo build --march native -I . -o cpu_bench benchmarks/bench_cpu.mojo" }
 bg = { cmd = "pixi run mojo build --march native -I . -o gpu_bench benchmarks/bench_gpu.mojo" }
+bl = { cmd = "pixi run mojo build --march native -I . -o lapper_bench benchmarks/bench_lapper.mojo" }
 
 [dependencies]
 modular = "=25.4.0"
