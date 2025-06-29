@@ -183,7 +183,7 @@ def test_lower_bound_simple():
 
     # Test value larger than all elements
     result = lower_bound(int_span, 15)
-    assert_equal(result, 6)
+    assert_equal(result, 7)
 
 
 def test_lower_bound_floats():
@@ -220,13 +220,14 @@ def test_lower_bound_edge_cases():
 
     # Single element - value larger than element
     result = lower_bound(single_span, 50)
-    assert_equal(result, 0)
+    assert_equal(result, 1)
 
 
 def test_lpow2_simple():
     var value = UInt64(100)
     var output = _lpow2(value)
     assert_equal(output, 64)
+
 
 
 def main():

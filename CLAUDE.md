@@ -53,6 +53,18 @@ pixi run bg
 
 # Run GPU benchmarks
 ./gpu_bench
+
+# Build Lapper benchmark
+pixi run bl
+
+# Run lapper benchmarks
+./lapper_bench
+
+# Build GPU debug script
+pixi run mojo build --march native -I . -o debug_gpu debug_gpu.mojo
+
+# Run GPU debug script
+./debug_gpu
 ```
 
 ### Code Formatting

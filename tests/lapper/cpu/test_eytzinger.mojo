@@ -31,19 +31,19 @@ def test_eytzinger_lookup_table():
     
     # Based on debug output, the actual lookup values are:
     # lookup[1] = 3 (eytz[1] = 7, which is at sorted index 3)
-    assert_equal(Int(eytz.lookup[1]), 3)  # 7 is at index 3 in sorted array
+    assert_equal(Int(eytz.lookup[1]), 3)
     # lookup[2] = 1 (eytz[2] = 3, which is at sorted index 1)  
-    assert_equal(Int(eytz.lookup[2]), 1)  # 3 is at index 1 in sorted array
+    assert_equal(Int(eytz.lookup[2]), 1)
     # lookup[3] = 5 (eytz[3] = 11, which is at sorted index 5)
-    assert_equal(Int(eytz.lookup[3]), 5)  # 11 is at index 5 in sorted array
+    assert_equal(Int(eytz.lookup[3]), 5)
     # lookup[4] = 0 (eytz[4] = 1, which is at sorted index 0)
-    assert_equal(Int(eytz.lookup[4]), 0)  # 1 is at index 0 in sorted array
+    assert_equal(Int(eytz.lookup[4]), 0)
     # lookup[5] = 2 (eytz[5] = 5, which is at sorted index 2)
-    assert_equal(Int(eytz.lookup[5]), 2)  # 5 is at index 2 in sorted array
+    assert_equal(Int(eytz.lookup[5]), 2)
     # lookup[6] = 4 (eytz[6] = 9, which is at sorted index 4)
-    assert_equal(Int(eytz.lookup[6]), 4)  # 9 is at index 4 in sorted array
+    assert_equal(Int(eytz.lookup[6]), 4)
     # lookup[7] = 6 (eytz[7] = 13, which is at sorted index 6)
-    assert_equal(Int(eytz.lookup[7]), 6)  # 13 is at index 6 in sorted array
+    assert_equal(Int(eytz.lookup[7]), 6)
 
 
 ############################
@@ -65,23 +65,23 @@ def test_eytzinger_lower_bound_simple():
     # lower_bound( 15 ) = 0
     
     var result = lower_bound(eytz_span, 1)
-    assert_equal(Int(result), 4)  # eytz[4] = 1
+    assert_equal(Int(result), 4)
     
     result = lower_bound(eytz_span, 4)
-    assert_equal(Int(result), 5)  # eytz[5] = 5 (first >= 4)
+    assert_equal(Int(result), 5)
     
     result = lower_bound(eytz_span, 5)
-    assert_equal(Int(result), 5)  # eytz[5] = 5 (exact match)
+    assert_equal(Int(result), 5)
     
     result = lower_bound(eytz_span, 8)
-    assert_equal(Int(result), 6)  # eytz[6] = 9 (first >= 8)
+    assert_equal(Int(result), 6)
     
     result = lower_bound(eytz_span, 15)
-    assert_equal(Int(result), 0)  # No value >= 15
+    assert_equal(Int(result), 0)
     
     # Test boundary case (value smaller than all elements)
     result = lower_bound(eytz_span, 0)
-    assert_equal(Int(result), 4)  # eytz[4] = 1 (first element >= 0)
+    assert_equal(Int(result), 4)
 
 
 def test_eytzinger_lower_bound_floats():
@@ -97,13 +97,13 @@ def test_eytzinger_lower_bound_floats():
     # lower_bound( 4.0 ) = 1
     
     var result = lower_bound(eytz_span, 3.0)
-    assert_equal(Int(result), 5)  # eytz[5] = 3.5 (first >= 3.0)
+    assert_equal(Int(result), 5)
     
     result = lower_bound(eytz_span, 3.5)
-    assert_equal(Int(result), 5)  # eytz[5] = 3.5 (exact match)
+    assert_equal(Int(result), 5)
     
     result = lower_bound(eytz_span, 4.0)
-    assert_equal(Int(result), 1)  # eytz[1] = 4.5 (first >= 4.0)
+    assert_equal(Int(result), 1)
 
 
 def test_eytzinger_lower_bound_edge_cases():
@@ -118,14 +118,14 @@ def test_eytzinger_lower_bound_edge_cases():
     
     # Only test case that returns valid index
     var result = lower_bound(single_span, 50)
-    assert_equal(Int(result), 0)  # No value >= 50
+    assert_equal(Int(result), 0)
     
     # Test boundary cases for single element
     result = lower_bound(single_span, 10)
-    assert_equal(Int(result), 1)  # eytz[1] = 42 (first element >= 10)
+    assert_equal(Int(result), 1)
     
     result = lower_bound(single_span, 42)
-    assert_equal(Int(result), 1)  # eytz[1] = 42 (exact match)
+    assert_equal(Int(result), 1)
 
 
 def test_eytzinger_lower_bound_duplicates():
@@ -191,9 +191,9 @@ def test_eytzinger_single_element():
     var eytz = eytzinger_with_lookup(Span(single_values))
     
     # Single element should be at index 1
-    assert_equal(len(eytz.layout), 2)  # Index 0 unused, index 1 has element
+    assert_equal(len(eytz.layout), 2)
     assert_equal(eytz.layout[1], 42)
-    assert_equal(Int(eytz.lookup[1]), 0)  # Maps to original index 0
+    assert_equal(Int(eytz.lookup[1]), 0)
 
 
 def test_eytzinger_power_of_two_sizes():

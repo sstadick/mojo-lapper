@@ -210,7 +210,7 @@ fn offset_bsearch[
 fn lower_bound[
     dtype: DType
 ](values: Span[Scalar[dtype]], value: Scalar[dtype]) -> UInt:
-    """Optimized lower_bound implementation with prefetching support.
+    """Optimized lower_bound implementation with edge case handling and prefetching support.
 
     Finds the index of the first element that is greater than or equal to the target
     value. This is equivalent to std::lower_bound in C++. The implementation uses
@@ -232,10 +232,12 @@ fn lower_bound[
         - If all elements < value: returns len(values)
         - If all elements >= value: returns 0
 
-    Edge Cases:
-        - Empty array: returns 0
-        - Single element: returns 0 if element >= value, else 1
-        - All elements equal: returns 0 if value <= elements[0], else len(values)
+    Edge Cases (with optimized early returns):
+        - Empty array: returns 0 immediately
+        - First element >= value: returns 0 immediately (optimized fast path)
+        - Last element < value: returns len(values) immediately (optimized fast path)
+        - Single element: handled by early return logic
+        - All elements equal: handled by first/last element checks
         - Duplicate target values: returns index of first occurrence
 
     Examples:
@@ -248,24 +250,32 @@ fn lower_bound[
         ```
 
     Performance Notes:
-        - Uses branchless comparison for reduced branch mispredictions
+        - Early returns for common edge cases provide O(1) performance
+        - Uses branchless comparison for reduced branch mispredictions in main loop
         - Prefetching support (currently disabled on M3 due to limited benefit)
         - Optimized for modern CPU architectures
         - May outperform naive implementations on large datasets
 
     Implementation Details:
+        - Fast path checks for empty arrays and boundary conditions
         - Cursor-based approach eliminates explicit bounds management
         - Multiplication by comparison result enables branchless updates
-        - Length halving ensures O(log n) time complexity
+        - Length halving ensures O(log n) time complexity for general case
 
-    Time Complexity: O(log n)
+    Time Complexity: O(1) for edge cases, O(log n) for general case
     Space Complexity: O(1)
     """
     constrained[dtype is not DType.invalid, "dtype must be valid."]()
     # alias FETCH_OPTS = PrefetchOptions().for_read().high_locality().to_data_cache()
 
-    # if len(values) == 0 or values[0] >= value:
-    #     return 0
+    # Handle edge cases
+    if len(values) == 0 or values[0] >= value:
+        return 0
+    elif values[0] >= value:
+        return 0
+    elif values[len(values) - 1] < value:
+        return len(values)
+
     var cursor = UInt32(0)
     var length = UInt32(len(values))
     while length > 1:
@@ -284,3 +294,41 @@ fn lower_bound[
         cursor += Int(values[cursor + half - 1] < value) * half
 
     return UInt(cursor)
+
+
+
+fn upper_bound[
+    dtype: DType
+](values: Span[Scalar[dtype]], key: Scalar[dtype]) -> UInt:
+    """Standard upper_bound implementation.
+
+    Finds the index of the first element that is strictly greater than the key.
+    This is equivalent to std::upper_bound in C++.
+
+    Args:
+        values: A sorted span of values in ascending order.
+        key: The key value to search for.
+
+    Returns:
+        The index of the first element > key, or len(values) if all elements <= key.
+
+    Examples:
+        ```mojo
+        var arr = List[Int32](1, 3, 5, 5, 7)
+        upper_bound(Span(arr), 5)  # returns 4 (first element > 5 is 7 at index 4)
+        upper_bound(Span(arr), 10) # returns 5 (no element > 10)
+        ```
+    """
+    constrained[dtype is not DType.invalid, "dtype must be valid."]()
+
+    var left = 0
+    var right = len(values)
+
+    while left < right:
+        var mid = left + (right - left) // 2
+        if values[mid] <= key:
+            left = mid + 1
+        else:
+            right = mid
+
+    return UInt(left)
