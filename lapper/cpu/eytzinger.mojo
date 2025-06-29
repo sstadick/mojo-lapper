@@ -82,6 +82,9 @@ from sys.intrinsics import prefetch, PrefetchOptions
 struct Eytzinger[dtype: DType](Copyable, Movable):
     """Eytzinger array layout with lookup table for cache-efficient binary search.
 
+    Parameters:
+        dtype: The data type of the elements in the Eytzinger layout.
+
     The Eytzinger layout (also known as BFS layout) arranges elements in a binary
     tree structure optimized for CPU cache performance. Elements are stored in
     breadth-first order, which improves spatial locality during binary search
@@ -136,7 +139,10 @@ struct Eytzinger[dtype: DType](Copyable, Movable):
     """
 
     var layout: List[Scalar[dtype]]
+    """The Eytzinger-ordered elements (1-indexed, index 0 contains sentinel)."""
+    
     var lookup: List[Scalar[dtype]]
+    """Maps Eytzinger indices back to original sorted array indices."""
 
 
 # TODO, allow this to take mutable spans for the layout and lookup so it can write directly to hostbuffers
@@ -144,6 +150,9 @@ fn eytzinger_with_lookup[
     dtype: DType
 ](read original: Span[Scalar[dtype]]) raises -> Eytzinger[dtype]:
     """Convert a sorted array to Eytzinger layout with lookup table.
+
+    Parameters:
+        dtype: The data type of the elements being converted.
 
     Creates an Eytzinger struct containing both the cache-efficient tree layout
     and a lookup table for converting Eytzinger indices back to original array
@@ -212,7 +221,7 @@ fn eytzinger_with_lookup[
         - Uses Deque as stack for iterative tree traversal
         - Negative indices mark nodes ready for element assignment
         - In-order traversal ensures sorted elements are assigned sequentially
-        - 1-based indexing aligns with standard Eytzinger conventions
+        - 1-based indexing aligns with standard Eytzinger conventions.
     """
     constrained[dtype is not DType.invalid, "dtype must be valid."]()
 
@@ -266,6 +275,9 @@ fn lower_bound[
     dtype: DType
 ](values: Span[Scalar[dtype]], value: Scalar[dtype]) -> UInt:
     """Eytzinger lower_bound using cache-efficient tree traversal.
+
+    Parameters:
+        dtype: The data type of the values being searched.
 
     Performs binary search on an Eytzinger-layout array using the tree structure
     for optimal cache performance. The algorithm traverses the implicit binary tree
@@ -338,8 +350,8 @@ fn lower_bound[
         This is expected behavior for Eytzinger search. Always check bounds before
         using the result to index into the array.
 
-    Time Complexity: O(log n)
-    Space Complexity: O(1)
+    Time Complexity: O(log n).
+    Space Complexity: O(1).
     """
     constrained[dtype is not DType.invalid, "dtype must be valid."]()
     # alias FETCH_OPTS = PrefetchOptions().for_read().high_locality().to_data_cache()

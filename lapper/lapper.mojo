@@ -38,21 +38,41 @@ struct Interval(
     """
 
     var start: UInt32
+    """Start position of the interval (inclusive)."""
+
     var stop: UInt32
+    """Stop position of the interval (exclusive)."""
+
     var val: Int32
+    """Value or ID associated with this interval."""
 
     # TODO: stopping mid refactor of interval
 
     @always_inline
     fn intersect(read self, read other: Self) -> UInt32:
-        """Compute the intersect between two intervals."""
+        """Compute the intersect between two intervals.
+
+        Args:
+            other: The other interval to intersect with.
+
+        Returns:
+            The length of the intersection between the two intervals.
+        """
         return saturating_sub(
             min(self.stop, other.stop), max(self.start, other.start)
         )
 
     @always_inline
     fn overlap(read self, start: UInt32, stop: UInt32) -> Bool:
-        """Check if two intervals overlap."""
+        """Check if two intervals overlap.
+
+        Args:
+            start: Start position of the query interval.
+            stop: Stop position of the query interval.
+
+        Returns:
+            True if the intervals overlap, False otherwise.
+        """
         return Self.overlap(self.start, self.stop, start, stop)
 
     @always_inline
@@ -148,6 +168,16 @@ struct Interval(
 
     @always_inline
     fn __lt__(read self, read other: Self) -> Bool:
+        """Check if this interval is less than another.
+
+        Intervals are ordered first by start position, then by stop position.
+
+        Args:
+            other: The interval to compare with.
+
+        Returns:
+            True if this interval is less than the other interval.
+        """
         if self.start < other.start:
             return True
         elif self.start == other.start and self.stop < other.stop:
@@ -157,10 +187,26 @@ struct Interval(
 
     @always_inline
     fn __ge__(read self, read other: Self) -> Bool:
+        """Check if this interval is greater than or equal to another.
+
+        Args:
+            other: The interval to compare with.
+
+        Returns:
+            True if this interval is greater than or equal to the other interval.
+        """
         return self > other or self == other
 
     @always_inline
     fn __le__(read self, read other: Self) -> Bool:
+        """Check if this interval is less than or equal to another.
+
+        Args:
+            other: The interval to compare with.
+
+        Returns:
+            True if this interval is less than or equal to the other interval.
+        """
         return self < other or self == other
 
     fn write_to[W: Writer](self, mut writer: W):
@@ -169,6 +215,9 @@ struct Interval(
         Formats the interval as "Interval {start: X, stop: Y}" where X and Y
         are the start and stop positions. The value field is not included in
         the string representation.
+
+        Parameters:
+            W: The writer type to output to.
 
         Args:
             writer: A mutable writer to output the formatted string.
@@ -207,8 +256,8 @@ struct Lapper[*, owns_data: Bool = True](Sized):
     - **stops_sorted**: Separately sorted array of stop positions (for BITS algorithm)
     - **max_len**: Maximum interval length (for optimization bounds)
 
-    Template Parameters:
-    - **owns_data**: True if the Lapper owns its memory, False if using external pointers
+    Parameters:
+        owns_data: True if the Lapper owns its memory, False if using external pointers.
 
     Performance Characteristics:
     - **Construction**: O(n log n) time, O(n) space
@@ -255,19 +304,24 @@ struct Lapper[*, owns_data: Bool = True](Sized):
     alias I = Interval
 
     # Sorted in interval order (primary data arrays)
-    var starts: UnsafePointer[UInt32]  # Interval start positions (sorted)
-    var stops: UnsafePointer[
-        UInt32
-    ]  # Interval stop positions (same order as starts)
-    var vals: UnsafePointer[Int32]  # Interval values/IDs (same order as starts)
+    var starts: UnsafePointer[UInt32]
+    """Interval start positions sorted by start position."""
+
+    var stops: UnsafePointer[UInt32]
+    """Interval stop positions in same order as starts."""
+
+    var vals: UnsafePointer[Int32]
+    """Interval values/IDs in same order as starts."""
 
     # For BITS algorithm optimization
-    var stops_sorted: UnsafePointer[
-        UInt32
-    ]  # Stop positions sorted independently
+    var stops_sorted: UnsafePointer[UInt32]
+    """Stop positions sorted independently for BITS algorithm."""
 
-    var length: UInt  # Number of intervals stored
-    var max_len: UInt32  # Maximum interval length (for bounds optimization)
+    var length: UInt
+    """Number of intervals stored in this Lapper."""
+
+    var max_len: UInt32
+    """Maximum interval length for bounds optimization."""
 
     # TODO: paramaterized optional eytzinger layout
 
@@ -313,7 +367,7 @@ struct Lapper[*, owns_data: Bool = True](Sized):
             - Creates separate arrays for starts, stops, and values (SoA layout)
             - Builds stops_sorted array for optimized BITS count algorithm
             - Calculates max_len for query optimization bounds
-            - Handles both CPU and GPU data layout preparation
+            - Handles both CPU and GPU data layout preparation.
         """
         if len(intervals) == 0:
             raise "Intervals length must be >= 1"
@@ -357,6 +411,29 @@ struct Lapper[*, owns_data: Bool = True](Sized):
         device_vals: DeviceBuffer[DType.int32],
         device_stops_sorted: DeviceBuffer[DType.uint32],
     ) raises -> Lapper[owns_data=False]:
+        """Prepare a Lapper instance for GPU execution.
+
+        Sorts intervals and copies data to both host and device buffers
+        for GPU kernel execution.
+
+        Args:
+            ctx: GPU device context for buffer operations.
+            intervals: List of intervals to store (will be sorted).
+            host_starts: Host buffer for interval start positions.
+            host_stops: Host buffer for interval stop positions.
+            host_vals: Host buffer for interval values.
+            host_stops_sorted: Host buffer for sorted stop positions.
+            device_starts: Device buffer for interval start positions.
+            device_stops: Device buffer for interval stop positions.
+            device_vals: Device buffer for interval values.
+            device_stops_sorted: Device buffer for sorted stop positions.
+
+        Returns:
+            A GPU-ready Lapper instance with owns_data=False.
+
+        Raises:
+            GPU-related errors during buffer operations.
+        """
         var length = len(intervals)
         var max_len = UInt32(0)
         var lapper = Lapper[
@@ -386,9 +463,20 @@ struct Lapper[*, owns_data: Bool = True](Sized):
         )
 
     fn __len__(read self) -> Int:
+        """Get the number of intervals stored in this Lapper.
+
+        Returns:
+            The number of intervals.
+        """
         return self.length
 
     fn __del__(owned self):
+        """Free allocated memory when owns_data=True.
+
+        Automatically called when the Lapper goes out of scope.
+        Only frees memory if owns_data=True.
+        """
+
         @parameter
         if owns_data:
             self.starts.free()
@@ -534,7 +622,7 @@ struct Lapper[*, owns_data: Bool = True](Sized):
         Thread Safety:
             - Safe to call concurrently from multiple threads
             - No modification of the Lapper structure during counting
-            - No shared state between concurrent calls
+            - No shared state between concurrent calls.
         """
         # The plus one is to account for the half-open intervals
         var first = lower_bound(Span(self.stops_sorted, len(self)), start + 1)

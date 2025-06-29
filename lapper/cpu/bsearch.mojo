@@ -59,6 +59,9 @@ fn naive_bsearch[
     over performance. It uses the classic binary search algorithm with explicit
     bounds checking and straightforward logic.
 
+    Parameters:
+        dtype: The data type of the values being searched.
+
     Args:
         values: A sorted span of values to search in (must be in ascending order).
         value: The value to search for.
@@ -85,8 +88,8 @@ fn naive_bsearch[
         naive_bsearch(Span(arr), 10) # returns 5 (insert at end)
         ```
 
-    Time Complexity: O(log n)
-    Space Complexity: O(1)
+    Time Complexity: O(log n).
+    Space Complexity: O(1).
     """
     constrained[dtype is not DType.invalid, "dtype must be valid."]()
 
@@ -153,6 +156,9 @@ fn offset_bsearch[
     can be more cache-friendly than traditional binary search for certain access
     patterns.
 
+    Parameters:
+        dtype: The data type of the values being searched.
+
     The algorithm works by:
     1. Starting at the end of the array (len(values))
     2. Using the largest power of 2 ≤ len(values) as initial step
@@ -188,8 +194,8 @@ fn offset_bsearch[
         - Particularly effective when target is likely to be in the latter half
         - Step size reduction provides O(log n) guarantees
 
-    Time Complexity: O(log n)
-    Space Complexity: O(1)
+    Time Complexity: O(log n).
+    Space Complexity: O(1).
     """
     constrained[dtype is not DType.invalid, "dtype must be valid."]()
 
@@ -211,6 +217,9 @@ fn lower_bound[
     dtype: DType
 ](values: Span[Scalar[dtype]], value: Scalar[dtype]) -> UInt:
     """Optimized lower_bound implementation with edge case handling and prefetching support.
+
+    Parameters:
+        dtype: The data type of the values being searched.
 
     Finds the index of the first element that is greater than or equal to the target
     value. This is equivalent to std::lower_bound in C++. The implementation uses
@@ -262,8 +271,8 @@ fn lower_bound[
         - Multiplication by comparison result enables branchless updates
         - Length halving ensures O(log n) time complexity for general case
 
-    Time Complexity: O(1) for edge cases, O(log n) for general case
-    Space Complexity: O(1)
+    Time Complexity: O(1) for edge cases, O(log n) for general case.
+    Space Complexity: O(1).
     """
     constrained[dtype is not DType.invalid, "dtype must be valid."]()
     # alias FETCH_OPTS = PrefetchOptions().for_read().high_locality().to_data_cache()
@@ -300,6 +309,9 @@ fn upper_bound[
     dtype: DType
 ](values: Span[Scalar[dtype]], key: Scalar[dtype]) -> UInt:
     """Standard upper_bound implementation.
+
+    Parameters:
+        dtype: The data type of the values being searched.
 
     Finds the index of the first element that is strictly greater than the key.
     This is equivalent to std::upper_bound in C++.

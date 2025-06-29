@@ -79,8 +79,7 @@ pixi run mojo format ./
 ### Documentation Validation
 
 ```bash
-pixi run mojo doc --diagnose-missing-doc-strings --validate-doc-strings \
-  -o /dev/null stdlib/stdlib/
+pixi run mojo doc --diagnose-missing-doc-strings --validate-doc-strings ./lapper
 ```
 
 ## High-Level Architecture

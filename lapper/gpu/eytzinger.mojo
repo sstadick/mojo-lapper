@@ -14,7 +14,19 @@ fn lower_bound_kernel[
     output: UnsafePointer[Scalar[dtype]],
     output_length: UInt,  # technically same as key_length
 ):
-    """Find the lower bound for all keys."""
+    """Find the lower bound for all keys using Eytzinger layout.
+    
+    Parameters:
+        dtype: The data type of the keys and elements.
+    
+    Args:
+        keys: Pointer to sorted array of keys to search for.
+        key_length: Number of keys to search for.
+        elems: Pointer to elements in Eytzinger layout.
+        elems_length: Number of elements in the Eytzinger array.
+        output: Pointer to output array for storing results.
+        output_length: Length of output array (should match key_length).
+    """
     constrained[dtype is not DType.invalid, "dtype must be vaild"]()
 
     var elems_span = Span(ptr=elems, length=elems_length)
