@@ -11,7 +11,7 @@ preview = ["pixi-build"]
 
 [package]
 name = "mojo-lapper"
-license = "MIT"
+license = "Unlicense OR MIT"
 version = "0.1.0"
 
 [package.build]
