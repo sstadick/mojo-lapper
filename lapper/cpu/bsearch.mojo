@@ -280,8 +280,6 @@ fn lower_bound[
     # Handle edge cases
     if len(values) == 0 or values[0] >= value:
         return 0
-    elif values[0] >= value:
-        return 0
     elif values[len(values) - 1] < value:
         return len(values)
 
