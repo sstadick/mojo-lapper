@@ -140,7 +140,7 @@ struct Eytzinger[dtype: DType](Copyable, Movable):
 
     var layout: List[Scalar[dtype]]
     """The Eytzinger-ordered elements (1-indexed, index 0 contains sentinel)."""
-    
+
     var lookup: List[Scalar[dtype]]
     """Maps Eytzinger indices back to original sorted array indices."""
 
@@ -357,7 +357,7 @@ fn lower_bound[
     # alias FETCH_OPTS = PrefetchOptions().for_read().high_locality().to_data_cache()
 
     # Use fixed-iteration version like C++ for better edge case handling
-    var iters = Int(32 - count_leading_zeros(UInt32(len(values) + 1)) - 1)
+    var iters = Int(32 - count_leading_zeros(UInt32(len(values))) - 1)
     var k: UInt32 = 1
 
     # Execute fixed number of iterations

@@ -231,7 +231,7 @@ struct Interval(
 
 
 @fieldwise_init
-struct Lapper[*, owns_data: Bool = True](Sized):
+struct Lapper[*, owns_data: Bool = True](Movable, Sized):
     """High-performance data structure for fast interval overlap detection.
 
     Lapper stores a collection of intervals and provides efficient algorithms for
@@ -263,7 +263,7 @@ struct Lapper[*, owns_data: Bool = True](Sized):
     - **Construction**: O(n log n) time, O(n) space
     - **Find Queries**: O(log n + k) where k = number of overlaps found
     - **Count Queries**: O(log n) using optimized BITS algorithm
-    - **Memory Usage**: ~4-5x the original interval data size
+    - **Memory Usage**: ~1.3x the original interval data size
 
     Thread Safety:
     - Construction operations are NOT thread-safe
@@ -395,6 +395,14 @@ struct Lapper[*, owns_data: Bool = True](Sized):
         # which are sorted by starts first, then by stops.
         memcpy(self.stops_sorted, self.stops, len(intervals))
         sort(Span(ptr=self.stops_sorted, length=len(intervals)))
+
+    fn __moveinit__(out self, owned other: Self):
+        self.starts = other.starts
+        self.stops = other.stops
+        self.vals = other.vals
+        self.stops_sorted = other.stops_sorted
+        self.length = other.length
+        self.max_len = other.max_len
 
     # TODO: it would be great if there were a way to seal the data from host/device buffers
     # The way it works is api-limiting

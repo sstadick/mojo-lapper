@@ -1,4 +1,4 @@
-from lapper.lapper import Lapper, Interval
+from lapper.eytzinger_lapper import EzLapper, Interval
 from testing import assert_equal, assert_true, assert_false, assert_raises
 
 
@@ -130,51 +130,38 @@ def test_interval_overlap_contained():
     assert_true(iv1.overlap(10, 20))  # exact match
 
 
-def test_lapper_empty():
-    """Test creating empty Lapper."""
+def test_ezlapper_empty():
+    """Test creating empty EzLapper."""
     # Now it should raise an error for empty lists
     with assert_raises(contains="Intervals length must be >= 1"):
-        var lapper = Lapper(List[Interval]())
-        _ = len(lapper)
+        var lapper = EzLapper(List[Interval]())
 
 
-def test_lapper_single_interval():
-    """Test Lapper with single interval."""
+def test_ezlapper_single_interval():
+    """Test EzLapper with single interval."""
     var intervals = List[Interval]()
     intervals.append(Interval(5, 10, 100))
 
-    var lapper = Lapper(intervals)
+    var lapper = EzLapper(intervals)
     assert_equal(len(lapper), 1)
-    assert_equal(lapper.max_len, 5)
-    assert_equal(lapper.starts[0], 5)
-    assert_equal(lapper.stops[0], 10)
-    assert_equal(lapper.vals[0], 100)
+    assert_equal(lapper.inner.max_len, 5)
 
     # Test counting overlapping intervals
     assert_equal(lapper.count(7, 8), 1)  # overlaps the interval
     assert_equal(lapper.count(0, 4), 0)  # before the interval
     assert_equal(lapper.count(11, 15), 0)  # after the interval
 
-    # Test finding the interval
-    # TODO: Re-enable when find method is fixed
-    # var results = List[Interval]()
-    # lapper.find(7, 8, results)
-    # assert_equal(len(results), 1)
-    # assert_equal(results[0].start, 5)
-    # assert_equal(results[0].stop, 10)
-    # assert_equal(results[0].val, 100)
 
-
-def test_lapper_multiple_intervals():
-    """Test Lapper with multiple intervals."""
+def test_ezlapper_multiple_intervals():
+    """Test EzLapper with multiple intervals."""
     var intervals = List[Interval]()
     intervals.append(Interval(1, 5, 10))
     intervals.append(Interval(10, 15, 20))
     intervals.append(Interval(20, 30, 30))
 
-    var lapper = Lapper(intervals)
+    var lapper = EzLapper(intervals)
     assert_equal(len(lapper), 3)
-    assert_equal(lapper.max_len, 10)  # interval [20, 30) has length 10
+    assert_equal(lapper.inner.max_len, 10)  # interval [20, 30) has length 10
 
     # Test counting with multiple intervals
     assert_equal(lapper.count(2, 4), 1)  # overlaps first interval
@@ -186,7 +173,7 @@ def test_lapper_multiple_intervals():
     assert_equal(lapper.count(0, 35), 3)  # overlaps all intervals
 
 
-def test_lapper_sorting():
+def test_ezlapper_sorting():
     """Verify intervals are sorted after initialization."""
     var intervals = List[Interval]()
     # Add intervals in reverse order
@@ -194,93 +181,25 @@ def test_lapper_sorting():
     intervals.append(Interval(10, 15, 2))
     intervals.append(Interval(1, 5, 1))
 
-    var lapper = Lapper(intervals)
+    var lapper = EzLapper(intervals)
 
-    # Check starts are sorted
-    assert_equal(lapper.starts[0], 1)
-    assert_equal(lapper.starts[1], 10)
-    assert_equal(lapper.starts[2], 20)
-
-    # Check stops match the sorted interval order
-    assert_equal(lapper.stops[0], 5)
-    assert_equal(lapper.stops[1], 15)
-    assert_equal(lapper.stops[2], 25)
-
-    # Check vals match the sorted interval order
-    assert_equal(lapper.vals[0], 1)
-    assert_equal(lapper.vals[1], 2)
-    assert_equal(lapper.vals[2], 3)
+    # Check that the underlying data is correctly sorted
+    # Note: We can't directly access the Eytzinger arrays, but we can verify
+    # behavior through count operations that the sorting worked correctly
+    assert_equal(lapper.count(2, 3), 1)  # should find interval [1, 5)
+    assert_equal(lapper.count(11, 12), 1)  # should find interval [10, 15)
+    assert_equal(lapper.count(21, 22), 1)  # should find interval [20, 25)
 
 
-# TODO: Re-enable find tests when find method is fixed
-# def test_find_no_overlaps():
-#     """Test query that finds no overlapping intervals."""
-#     var intervals = List[Interval]()
-#     intervals.append(Interval(1, 5, 0))
-#     intervals.append(Interval(10, 15, 0))
-#     intervals.append(Interval(20, 25, 0))
-
-#     var lapper = Lapper(intervals)
-#     var results = List[Interval]()
-
-#     # Query in gap between intervals
-#     lapper.find(6, 9, results)
-#     assert_equal(len(results), 0)
-
-
-def test_lapper_max_len():
+def test_ezlapper_max_len():
     """Verify max_len is calculated correctly."""
     var intervals = List[Interval]()
     intervals.append(Interval(1, 5, 0))  # length 4
     intervals.append(Interval(10, 20, 0))  # length 10
     intervals.append(Interval(30, 35, 0))  # length 5
 
-    var lapper = Lapper(intervals)
-    assert_equal(lapper.max_len, 10)
-
-
-def test_lapper_starts_order():
-    """Verify starts array maintains interval order."""
-    var intervals = List[Interval]()
-    # Add intervals with same start but different stops
-    intervals.append(Interval(5, 20, 1))
-    intervals.append(Interval(5, 10, 2))
-    intervals.append(Interval(5, 15, 3))
-
-    var lapper = Lapper(intervals)
-
-    # All starts should be 5
-    for i in range(len(lapper)):
-        assert_equal(lapper.starts[i], 5)
-
-    # Stops should be sorted by stop value when starts are equal
-    assert_equal(lapper.stops[0], 10)
-    assert_equal(lapper.stops[1], 15)
-    assert_equal(lapper.stops[2], 20)
-
-    # Vals should match the sorted order
-    assert_equal(lapper.vals[0], 2)
-    assert_equal(lapper.vals[1], 3)
-    assert_equal(lapper.vals[2], 1)
-
-
-def test_lapper_stops_sorted():
-    """Verify stops_sorted array is sorted."""
-    var intervals = List[Interval]()
-    intervals.append(Interval(1, 30, 0))
-    intervals.append(Interval(5, 10, 0))
-    intervals.append(Interval(15, 25, 0))
-
-    var lapper = Lapper(intervals)
-
-    # stops_sorted should be sorted: [10, 25, 30]
-    assert_equal(lapper.stops_sorted[0], 10)
-    assert_equal(lapper.stops_sorted[1], 25)
-    assert_equal(lapper.stops_sorted[2], 30)
-
-    # Verify stops_sorted are actually sorted
-    for i in range(len(lapper) - 1):
-        assert_true(lapper.stops_sorted[i] <= lapper.stops_sorted[i + 1])
+    var lapper = EzLapper(intervals)
+    assert_equal(lapper.inner.max_len, 10)
 
 
 def test_count_no_overlaps():
@@ -290,7 +209,7 @@ def test_count_no_overlaps():
     intervals.append(Interval(15, 20, 0))
     intervals.append(Interval(25, 30, 0))
 
-    var lapper = Lapper(intervals)
+    var lapper = EzLapper(intervals)
 
     # Query in gaps between intervals
     assert_equal(lapper.count(0, 4), 0)  # before first interval
@@ -306,7 +225,7 @@ def test_count_single_overlap():
     intervals.append(Interval(15, 20, 0))
     intervals.append(Interval(25, 30, 0))
 
-    var lapper = Lapper(intervals)
+    var lapper = EzLapper(intervals)
 
     # Each query should overlap exactly one interval
     assert_equal(lapper.count(7, 8), 1)  # overlaps first interval
@@ -328,7 +247,7 @@ def test_count_multiple_overlaps():
     intervals.append(Interval(12, 18, 0))
     intervals.append(Interval(25, 30, 0))
 
-    var lapper = Lapper(intervals)
+    var lapper = EzLapper(intervals)
 
     # Query overlapping first three intervals
     assert_equal(lapper.count(8, 17), 3)
@@ -350,7 +269,7 @@ def test_count_contained_intervals():
     intervals.append(Interval(20, 25, 0))
     intervals.append(Interval(30, 35, 0))
 
-    var lapper = Lapper(intervals)
+    var lapper = EzLapper(intervals)
 
     # Query that contains single intervals
     assert_equal(lapper.count(5, 18), 1)  # contains first interval
@@ -369,7 +288,7 @@ def test_count_exact_boundaries():
     intervals.append(Interval(10, 20, 0))
     intervals.append(Interval(30, 40, 0))
 
-    var lapper = Lapper(intervals)
+    var lapper = EzLapper(intervals)
 
     # Exact matches should count the interval
     assert_equal(lapper.count(10, 20), 1)  # exact match first interval
@@ -387,7 +306,7 @@ def test_count_single_interval():
     var intervals = List[Interval]()
     intervals.append(Interval(10, 20, 42))
 
-    var lapper = Lapper(intervals)
+    var lapper = EzLapper(intervals)
 
     # Overlapping queries
     assert_equal(lapper.count(5, 15), 1)  # overlaps start
@@ -410,16 +329,18 @@ def test_count_overlapping_intervals():
     intervals.append(Interval(8, 12, 0))
     intervals.append(Interval(11, 20, 0))
 
-    var lapper = Lapper(intervals)
+    var lapper = EzLapper(intervals)
 
     # Query that hits all overlapping intervals
     assert_equal(lapper.count(9, 11), 3)  # overlaps first 3 intervals
-    assert_equal(lapper.count(5, 12), 4)  # overlaps first 3 intervals
-    assert_equal(lapper.count(11, 12), 3)  # overlaps last 2 intervals
+    assert_equal(lapper.count(5, 12), 4)  # overlaps all 4 intervals
+    assert_equal(
+        lapper.count(11, 12), 3
+    )  # overlaps intervals [5,15), [8,12), [11,20)
     assert_equal(lapper.count(1, 20), 4)  # overlaps all intervals
 
     # Edge cases within overlapping region
-    assert_equal(lapper.count(6, 9), 3)  # overlaps first 2 intervals
+    assert_equal(lapper.count(6, 9), 3)  # overlaps first 3 intervals
     assert_equal(
         lapper.count(12, 19), 2
     )  # overlaps intervals [5,15) and [11,20)
@@ -432,12 +353,12 @@ def test_count_same_start_different_stops():
     intervals.append(Interval(10, 20, 2))
     intervals.append(Interval(10, 25, 3))
 
-    var lapper = Lapper(intervals)
+    var lapper = EzLapper(intervals)
 
     # Query that overlaps all intervals with same start
     assert_equal(lapper.count(5, 12), 3)  # overlaps all 3
-    assert_equal(lapper.count(12, 17), 3)  # overlaps last 2 (stops 20, 25)
-    assert_equal(lapper.count(17, 22), 2)  # overlaps only last (stop 25)
+    assert_equal(lapper.count(12, 17), 3)  # overlaps all 3
+    assert_equal(lapper.count(17, 22), 2)  # overlaps last 2 (stops 20, 25)
     assert_equal(lapper.count(26, 30), 0)  # overlaps none
 
 
@@ -448,7 +369,7 @@ def test_count_adjacent_intervals():
     intervals.append(Interval(10, 15, 0))
     intervals.append(Interval(15, 20, 0))
 
-    var lapper = Lapper(intervals)
+    var lapper = EzLapper(intervals)
 
     # Queries spanning adjacent intervals
     assert_equal(lapper.count(8, 12), 2)  # spans first two intervals
@@ -472,18 +393,16 @@ def main():
     test_interval_overlap_edge_cases()
     test_interval_overlap_contained()
 
-    # Lapper initialization tests
-    test_lapper_empty()
-    test_lapper_single_interval()
-    test_lapper_multiple_intervals()
-    test_lapper_sorting()
+    # EzLapper initialization tests
+    test_ezlapper_empty()
+    test_ezlapper_single_interval()
+    test_ezlapper_multiple_intervals()
+    test_ezlapper_sorting()
 
-    # Lapper internal structure tests
-    test_lapper_max_len()
-    test_lapper_starts_order()
-    test_lapper_stops_sorted()
+    # EzLapper internal structure tests
+    test_ezlapper_max_len()
 
-    # Lapper count method tests
+    # EzLapper count method tests
     test_count_no_overlaps()
     test_count_single_overlap()
     test_count_multiple_overlaps()
@@ -494,4 +413,4 @@ def main():
     test_count_same_start_different_stops()
     test_count_adjacent_intervals()
 
-    print("All tests passed!")
+    print("All EzLapper tests passed!")

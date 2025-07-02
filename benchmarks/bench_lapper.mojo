@@ -4,6 +4,7 @@ from lapper.lapper import (
     find_overlaps_kernel,
     count_overlaps_kernel,
 )
+from lapper.eytzinger_lapper import EzLapper
 from random import randint, seed
 from benchmark import (
     Bench,
@@ -15,6 +16,7 @@ from benchmark import (
 )
 from memory import memcpy
 from math import ceildiv
+from sys.info import has_accelerator
 from gpu.host import DeviceContext
 
 
@@ -67,7 +69,7 @@ def generate_queries(
 
 
 def benchmark_lapper_count():
-    """Benchmark Lapper count operations on CPU vs GPU."""
+    """Benchmark Lapper count operations on CPU and GPU (if available)."""
     alias num_intervals = 100_000
     alias num_queries = 10_000
     alias max_coordinate = 1_000_000
@@ -79,100 +81,10 @@ def benchmark_lapper_count():
     print("Creating CPU Lapper...")
     var cpu_lapper = Lapper(intervals)
 
-    print("Setting up GPU context...")
-    var ctx = DeviceContext()
+    print("Creating EzLapper...")
+    var ez_lapper = EzLapper(intervals)
 
-    # Create GPU lapper
-    print("Creating GPU Lapper...")
-    # Allocate host and device buffers for GPU Lapper
-    var host_starts = ctx.enqueue_create_host_buffer[DType.uint32](
-        num_intervals
-    )
-    var host_stops = ctx.enqueue_create_host_buffer[DType.uint32](num_intervals)
-    var host_vals = ctx.enqueue_create_host_buffer[DType.int32](num_intervals)
-    var host_stops_sorted = ctx.enqueue_create_host_buffer[DType.uint32](
-        num_intervals
-    )
-
-    var device_starts = ctx.enqueue_create_buffer[DType.uint32](num_intervals)
-    var device_stops = ctx.enqueue_create_buffer[DType.uint32](num_intervals)
-    var device_vals = ctx.enqueue_create_buffer[DType.int32](num_intervals)
-    var device_stops_sorted = ctx.enqueue_create_buffer[DType.uint32](
-        num_intervals
-    )
-
-    ctx.synchronize()
-
-    var gpu_lapper = Lapper.prep_for_gpu(
-        ctx,
-        intervals^,
-        host_starts,
-        host_stops,
-        host_vals,
-        host_stops_sorted,
-        device_starts,
-        device_stops,
-        device_vals,
-        device_stops_sorted,
-    )
-
-    # Test GPU kernel with a single query before benchmarking
-    print("Testing GPU kernel with single query...")
-    var test_host_keys = ctx.enqueue_create_host_buffer[DType.uint32](2)
-    var test_device_keys = ctx.enqueue_create_buffer[DType.uint32](2)
-    var test_device_output = ctx.enqueue_create_buffer[DType.uint32](1)
-    var test_host_output = ctx.enqueue_create_host_buffer[DType.uint32](1)
-
-    # Use first query for testing
-    test_host_keys[0] = queries[0].start
-    test_host_keys[1] = queries[0].stop
-
-    test_host_keys.enqueue_copy_to(test_device_keys)
-    ctx.synchronize()
-
-    try:
-        ctx.enqueue_function[find_overlaps_kernel](
-            gpu_lapper.starts,
-            gpu_lapper.stops,
-            gpu_lapper.vals,
-            gpu_lapper.stops_sorted,
-            gpu_lapper.length,
-            gpu_lapper.max_len,
-            test_device_keys.unsafe_ptr(),
-            2,
-            test_device_output.unsafe_ptr(),
-            1,
-            grid_dim=1,
-            block_dim=32,
-        )
-        ctx.synchronize()
-
-        test_device_output.enqueue_copy_to(test_host_output)
-        ctx.synchronize()
-
-        var gpu_count = test_host_output[0]
-        print(
-            String("GPU test result: query=({},{}) count={}").format(
-                queries[0].start, queries[0].stop, gpu_count
-            )
-        )
-
-        # Compare with CPU result for validation
-        var cpu_lb = cpu_lapper._lower_bound(queries[0].start, queries[0].stop)
-        var cpu_count = cpu_lapper._count(
-            cpu_lb, queries[0].start, queries[0].stop
-        )
-        print(String("CPU test result: count={}").format(cpu_count))
-
-        if gpu_count != cpu_count:
-            print("WARNING: GPU/CPU count mismatch!")
-        else:
-            print("GPU kernel test passed!")
-
-    except e:
-        print("ERROR: GPU kernel test failed:", e)
-
-    # For now, we'll benchmark CPU operations
+    # Start benchmarking
     print("Starting benchmarks...")
     var b = Bench()
 
@@ -187,6 +99,22 @@ def benchmark_lapper_count():
             var total_count: UInt32 = 0
             for query in queries:
                 var count = cpu_lapper.count(query.start, query.stop)
+                total_count += count
+            keep(total_count)
+
+        b.iter[run]()
+
+    @parameter
+    @always_inline
+    fn bench_ezlapper_count(mut b: Bencher):
+        """Benchmark EzLapper count operations."""
+
+        @parameter
+        @always_inline
+        fn run():
+            var total_count: UInt32 = 0
+            for query in queries:
+                var count = ez_lapper.count(query.start, query.stop)
                 total_count += count
             keep(total_count)
 
@@ -209,116 +137,310 @@ def benchmark_lapper_count():
 
         b.iter[run]()
 
-    @parameter
-    @always_inline
-    fn bench_gpu_find_overlaps[
-        grid_dim: Int, block_dim: Int
-    ](mut b: Bencher) raises:
-        """Benchmark GPU count naive operations."""
-        # Setup device buffers
-        var host_keys = ctx.enqueue_create_host_buffer[DType.uint32](
-            num_queries * 2
-        )
-        var device_keys = ctx.enqueue_create_buffer[DType.uint32](
-            num_queries * 2
-        )
-        var device_output = ctx.enqueue_create_buffer[DType.uint32](num_queries)
-        var host_output = ctx.enqueue_create_host_buffer[DType.uint32](
-            num_queries
-        )
-
-        # Copy query data to GPU format (start, stop pairs)
-        for i in range(num_queries):
-            host_keys[i * 2] = queries[i].start
-            host_keys[i * 2 + 1] = queries[i].stop
-
-        host_keys.enqueue_copy_to(device_keys)
-        ctx.synchronize()
-
-        @parameter
-        @always_inline
-        fn kernel_launch(gpu_ctx: DeviceContext) raises:
-            gpu_ctx.enqueue_function[find_overlaps_kernel](
-                gpu_lapper.starts,
-                gpu_lapper.stops,
-                gpu_lapper.vals,
-                gpu_lapper.stops_sorted,
-                gpu_lapper.length,
-                gpu_lapper.max_len,
-                device_keys.unsafe_ptr(),
-                num_queries * 2,
-                device_output.unsafe_ptr(),
-                num_queries,
-                grid_dim=grid_dim,
-                block_dim=block_dim,
-            )
-
-        b.iter_custom[kernel_launch](ctx)
-
-    @parameter
-    @always_inline
-    fn bench_gpu_count[grid_dim: Int, block_dim: Int](mut b: Bencher) raises:
-        """Benchmark GPU count operations."""
-        # Setup device buffers
-        var host_keys = ctx.enqueue_create_host_buffer[DType.uint32](
-            num_queries * 2
-        )
-        var device_keys = ctx.enqueue_create_buffer[DType.uint32](
-            num_queries * 2
-        )
-        var device_output = ctx.enqueue_create_buffer[DType.uint32](num_queries)
-        var host_output = ctx.enqueue_create_host_buffer[DType.uint32](
-            num_queries
-        )
-
-        # Copy query data to GPU format (start, stop pairs)
-        for i in range(num_queries):
-            host_keys[i * 2] = queries[i].start
-            host_keys[i * 2 + 1] = queries[i].stop
-
-        host_keys.enqueue_copy_to(device_keys)
-        ctx.synchronize()
-
-        @parameter
-        @always_inline
-        fn kernel_launch(gpu_ctx: DeviceContext) raises:
-            gpu_ctx.enqueue_function[count_overlaps_kernel](
-                gpu_lapper.starts,
-                gpu_lapper.stops,
-                gpu_lapper.vals,
-                gpu_lapper.stops_sorted,
-                gpu_lapper.length,
-                gpu_lapper.max_len,
-                device_keys.unsafe_ptr(),
-                num_queries * 2,
-                device_output.unsafe_ptr(),
-                num_queries,
-                grid_dim=grid_dim,
-                block_dim=block_dim,
-            )
-
-        b.iter_custom[kernel_launch](ctx)
-
     # Run CPU benchmarks
     b.bench_function[bench_cpu_count](BenchId("CPU count overlaps BITS"))
+    b.bench_function[bench_ezlapper_count](BenchId("EzLapper count overlaps"))
     b.bench_function[bench_cpu_find](BenchId("CPU count overlaps naive"))
 
-    # The GPU kernel compilation is failing, needs debugging
-    alias block_sizes = List[Int](1024, 512, 256, 128)
-    # alias block_sizes = List[Int](512)
-
     @parameter
-    for i in range(0, len(block_sizes)):
-        alias block_size = block_sizes[i]
-        b.bench_function[
-            bench_gpu_find_overlaps[
-                ceildiv(num_queries, block_size), block_size
-            ]
-        ](BenchId("GPU count overlaps naive: " + String(block_size)))
+    if has_accelerator():
+        print("Setting up GPU context...")
+        var ctx = DeviceContext()
 
-        b.bench_function[
-            bench_gpu_count[ceildiv(num_queries, block_size), block_size]
-        ](BenchId("GPU count overlaps BITS: " + String(block_size)))
+        # Create GPU lapper
+        print("Creating GPU Lapper...")
+        # Allocate host and device buffers for GPU Lapper
+        var host_starts = ctx.enqueue_create_host_buffer[DType.uint32](
+            num_intervals
+        )
+        var host_stops = ctx.enqueue_create_host_buffer[DType.uint32](
+            num_intervals
+        )
+        var host_vals = ctx.enqueue_create_host_buffer[DType.int32](
+            num_intervals
+        )
+        var host_stops_sorted = ctx.enqueue_create_host_buffer[DType.uint32](
+            num_intervals
+        )
+
+        var device_starts = ctx.enqueue_create_buffer[DType.uint32](
+            num_intervals
+        )
+        var device_stops = ctx.enqueue_create_buffer[DType.uint32](
+            num_intervals
+        )
+        var device_vals = ctx.enqueue_create_buffer[DType.int32](num_intervals)
+        var device_stops_sorted = ctx.enqueue_create_buffer[DType.uint32](
+            num_intervals
+        )
+
+        ctx.synchronize()
+
+        var gpu_lapper = Lapper.prep_for_gpu(
+            ctx,
+            intervals^,
+            host_starts,
+            host_stops,
+            host_vals,
+            host_stops_sorted,
+            device_starts,
+            device_stops,
+            device_vals,
+            device_stops_sorted,
+        )
+
+        # Test GPU kernel with a single query before benchmarking
+        print("Testing GPU kernel with single query...")
+        var test_host_keys = ctx.enqueue_create_host_buffer[DType.uint32](2)
+        var test_device_keys = ctx.enqueue_create_buffer[DType.uint32](2)
+        var test_device_output = ctx.enqueue_create_buffer[DType.uint32](1)
+        var test_host_output = ctx.enqueue_create_host_buffer[DType.uint32](1)
+
+        # Use first query for testing
+        test_host_keys[0] = queries[0].start
+        test_host_keys[1] = queries[0].stop
+
+        test_host_keys.enqueue_copy_to(test_device_keys)
+        ctx.synchronize()
+
+        try:
+            ctx.enqueue_function[find_overlaps_kernel](
+                gpu_lapper.starts,
+                gpu_lapper.stops,
+                gpu_lapper.vals,
+                gpu_lapper.stops_sorted,
+                gpu_lapper.length,
+                gpu_lapper.max_len,
+                test_device_keys.unsafe_ptr(),
+                2,
+                test_device_output.unsafe_ptr(),
+                1,
+                grid_dim=1,
+                block_dim=32,
+            )
+            ctx.synchronize()
+
+            test_device_output.enqueue_copy_to(test_host_output)
+            ctx.synchronize()
+
+            var gpu_count = test_host_output[0]
+            print(
+                String("GPU test result: query=({},{}) count={}").format(
+                    queries[0].start, queries[0].stop, gpu_count
+                )
+            )
+
+            # Compare with CPU result for validation
+            var cpu_lb = cpu_lapper._lower_bound(
+                queries[0].start, queries[0].stop
+            )
+            var cpu_count = cpu_lapper._count(
+                cpu_lb, queries[0].start, queries[0].stop
+            )
+            print(String("CPU test result: count={}").format(cpu_count))
+
+            if gpu_count != cpu_count:
+                print("WARNING: GPU/CPU count mismatch!")
+            else:
+                print("GPU kernel test passed!")
+
+        except e:
+            print("ERROR: GPU kernel test failed:", e)
+
+        @parameter
+        @always_inline
+        fn bench_gpu_find_overlaps[
+            grid_dim: Int, block_dim: Int
+        ](mut b: Bencher) raises:
+            """Benchmark GPU count naive operations."""
+            # Setup device buffers
+            var host_keys = ctx.enqueue_create_host_buffer[DType.uint32](
+                num_queries * 2
+            )
+            var device_keys = ctx.enqueue_create_buffer[DType.uint32](
+                num_queries * 2
+            )
+            var device_output = ctx.enqueue_create_buffer[DType.uint32](num_queries)
+            var host_output = ctx.enqueue_create_host_buffer[DType.uint32](
+                num_queries
+            )
+
+            # Copy query data to GPU format (start, stop pairs)
+            for i in range(num_queries):
+                host_keys[i * 2] = queries[i].start
+                host_keys[i * 2 + 1] = queries[i].stop
+
+            host_keys.enqueue_copy_to(device_keys)
+            ctx.synchronize()
+
+            @parameter
+            @always_inline
+            fn kernel_launch(gpu_ctx: DeviceContext) raises:
+                gpu_ctx.enqueue_function[find_overlaps_kernel](
+                    gpu_lapper.starts,
+                    gpu_lapper.stops,
+                    gpu_lapper.vals,
+                    gpu_lapper.stops_sorted,
+                    gpu_lapper.length,
+                    gpu_lapper.max_len,
+                    device_keys.unsafe_ptr(),
+                    num_queries * 2,
+                    device_output.unsafe_ptr(),
+                    num_queries,
+                    grid_dim=grid_dim,
+                    block_dim=block_dim,
+                )
+
+            b.iter_custom[kernel_launch](ctx)
+
+        @parameter
+        @always_inline
+        fn bench_gpu_count[grid_dim: Int, block_dim: Int](mut b: Bencher) raises:
+            """Benchmark GPU count operations."""
+            # Setup device buffers
+            var host_keys = ctx.enqueue_create_host_buffer[DType.uint32](
+                num_queries * 2
+            )
+            var device_keys = ctx.enqueue_create_buffer[DType.uint32](
+                num_queries * 2
+            )
+            var device_output = ctx.enqueue_create_buffer[DType.uint32](num_queries)
+            var host_output = ctx.enqueue_create_host_buffer[DType.uint32](
+                num_queries
+            )
+
+            # Copy query data to GPU format (start, stop pairs)
+            for i in range(num_queries):
+                host_keys[i * 2] = queries[i].start
+                host_keys[i * 2 + 1] = queries[i].stop
+
+            host_keys.enqueue_copy_to(device_keys)
+            ctx.synchronize()
+
+            @parameter
+            @always_inline
+            fn kernel_launch(gpu_ctx: DeviceContext) raises:
+                gpu_ctx.enqueue_function[count_overlaps_kernel](
+                    gpu_lapper.starts,
+                    gpu_lapper.stops,
+                    gpu_lapper.vals,
+                    gpu_lapper.stops_sorted,
+                    gpu_lapper.length,
+                    gpu_lapper.max_len,
+                    device_keys.unsafe_ptr(),
+                    num_queries * 2,
+                    device_output.unsafe_ptr(),
+                    num_queries,
+                    grid_dim=grid_dim,
+                    block_dim=block_dim,
+                )
+
+            b.iter_custom[kernel_launch](ctx)
+
+        # Run GPU benchmarks 
+        alias block_sizes = List[Int](1024, 512, 256, 128)
+
+        @parameter
+        for i in range(0, len(block_sizes)):
+            alias block_size = block_sizes[i]
+            b.bench_function[
+                bench_gpu_find_overlaps[
+                    ceildiv(num_queries, block_size), block_size
+                ]
+            ](BenchId("GPU count overlaps naive: " + String(block_size)))
+
+            b.bench_function[
+                bench_gpu_count[ceildiv(num_queries, block_size), block_size]
+            ](BenchId("GPU count overlaps BITS: " + String(block_size)))
+
+        # Validate GPU count results against CPU
+        print("\nGPU Count Validation:")
+        var gpu_sample_queries = 5
+
+        # Setup buffers for GPU count verification
+        var host_keys = ctx.enqueue_create_host_buffer[DType.uint32](
+            gpu_sample_queries * 2
+        )
+        var device_keys = ctx.enqueue_create_buffer[DType.uint32](
+            gpu_sample_queries * 2
+        )
+        var device_count_output = ctx.enqueue_create_buffer[DType.uint32](
+            gpu_sample_queries
+        )
+        var host_count_output = ctx.enqueue_create_host_buffer[DType.uint32](
+            gpu_sample_queries
+        )
+
+        # Copy sample queries to GPU format
+        for i in range(gpu_sample_queries):
+            host_keys[i * 2] = queries[i].start
+            host_keys[i * 2 + 1] = queries[i].stop
+
+        host_keys.enqueue_copy_to(device_keys)
+        ctx.synchronize()
+
+        # Run GPU count kernel
+        ctx.enqueue_function[count_overlaps_kernel](
+            gpu_lapper.starts,
+            gpu_lapper.stops,
+            gpu_lapper.vals,
+            gpu_lapper.stops_sorted,
+            gpu_lapper.length,
+            gpu_lapper.max_len,
+            device_keys.unsafe_ptr(),
+            gpu_sample_queries * 2,
+            device_count_output.unsafe_ptr(),
+            gpu_sample_queries,
+            grid_dim=ceildiv(gpu_sample_queries, 256),
+            block_dim=256,
+        )
+        device_count_output.enqueue_copy_to(host_count_output)
+        ctx.synchronize()
+
+        # Compare GPU count results with CPU
+        var count_mismatches = 0
+        var gpu_total: UInt32 = 0
+        var gpu_cpu_total: UInt32 = 0
+
+        for i in range(gpu_sample_queries):
+            var query = queries[i]
+            var lb = cpu_lapper._lower_bound(query.start, query.stop)
+            var cpu_count = cpu_lapper._count(lb, query.start, query.stop)
+            var gpu_count = host_count_output[i]
+            gpu_total += gpu_count
+            gpu_cpu_total += cpu_count
+
+            if cpu_count != gpu_count:
+                count_mismatches += 1
+                print(
+                    String(
+                        "MISMATCH Query {}: CPU count={}, GPU count={}"
+                    ).format(i, cpu_count, gpu_count)
+                )
+            else:
+                print(
+                    String("✓ Query {}: CPU count={}, GPU count={}").format(
+                        i, cpu_count, gpu_count
+                    )
+                )
+
+        if count_mismatches == 0:
+            print(
+                String("✅ All {} GPU count results match CPU!").format(
+                    gpu_sample_queries
+                )
+            )
+            print(
+                String("   CPU total: {}, GPU total: {}").format(
+                    gpu_cpu_total, gpu_total
+                )
+            )
+        else:
+            print(
+                String("❌ {} GPU count mismatches found!").format(
+                    count_mismatches
+                )
+            )
 
     print(b)
 
@@ -353,90 +475,6 @@ def benchmark_lapper_count():
         )
     )
 
-    # Validate GPU count results against CPU
-    print("\nGPU Count Validation:")
-
-    # Setup buffers for GPU count verification
-    var host_keys = ctx.enqueue_create_host_buffer[DType.uint32](
-        sample_queries * 2
-    )
-    var device_keys = ctx.enqueue_create_buffer[DType.uint32](
-        sample_queries * 2
-    )
-    var device_count_output = ctx.enqueue_create_buffer[DType.uint32](
-        sample_queries
-    )
-    var host_count_output = ctx.enqueue_create_host_buffer[DType.uint32](
-        sample_queries
-    )
-
-    # Copy sample queries to GPU format
-    for i in range(sample_queries):
-        host_keys[i * 2] = queries[i].start
-        host_keys[i * 2 + 1] = queries[i].stop
-
-    host_keys.enqueue_copy_to(device_keys)
-    ctx.synchronize()
-
-    # Run GPU count kernel
-    ctx.enqueue_function[count_overlaps_kernel](
-        gpu_lapper.starts,
-        gpu_lapper.stops,
-        gpu_lapper.vals,
-        gpu_lapper.stops_sorted,
-        gpu_lapper.length,
-        gpu_lapper.max_len,
-        device_keys.unsafe_ptr(),
-        sample_queries * 2,
-        device_count_output.unsafe_ptr(),
-        sample_queries,
-        grid_dim=ceildiv(sample_queries, 256),
-        block_dim=256,
-    )
-    device_count_output.enqueue_copy_to(host_count_output)
-    ctx.synchronize()
-
-    # Compare GPU count results with CPU
-    var count_mismatches = 0
-    var gpu_total: UInt32 = 0
-
-    for i in range(sample_queries):
-        var query = queries[i]
-        var lb = cpu_lapper._lower_bound(query.start, query.stop)
-        var cpu_count = cpu_lapper._count(lb, query.start, query.stop)
-        var gpu_count = host_count_output[i]
-        gpu_total += gpu_count
-
-        if cpu_count != gpu_count:
-            count_mismatches += 1
-            print(
-                String("MISMATCH Query {}: CPU count={}, GPU count={}").format(
-                    i, cpu_count, gpu_count
-                )
-            )
-        else:
-            print(
-                String("✓ Query {}: CPU count={}, GPU count={}").format(
-                    i, cpu_count, gpu_count
-                )
-            )
-
-    if count_mismatches == 0:
-        print(
-            String("✅ All {} GPU count results match CPU!").format(
-                sample_queries
-            )
-        )
-        print(
-            String("   CPU total: {}, GPU total: {}").format(
-                cpu_total, gpu_total
-            )
-        )
-    else:
-        print(
-            String("❌ {} GPU count mismatches found!").format(count_mismatches)
-        )
-
 
 def benchmark_query_sorting_impact():
     """Compare performance of sorted vs unsorted queries."""
@@ -463,6 +501,9 @@ def benchmark_query_sorting_impact():
 
     print("Creating CPU Lapper...")
     var cpu_lapper = Lapper(intervals)
+
+    print("Creating EzLapper...")
+    var ez_lapper = EzLapper(intervals)
 
     var b = Bench()
 
@@ -498,10 +539,48 @@ def benchmark_query_sorting_impact():
 
         b.iter[run]()
 
+    @parameter
+    @always_inline
+    fn bench_ezlapper_sorted_queries(mut b: Bencher):
+        """Benchmark EzLapper count operations with sorted queries."""
+
+        @parameter
+        @always_inline
+        fn run():
+            var total_count: UInt32 = 0
+            for query in sorted_queries:
+                var count = ez_lapper.count(query.start, query.stop)
+                total_count += count
+            keep(total_count)
+
+        b.iter[run]()
+
+    @parameter
+    @always_inline
+    fn bench_ezlapper_unsorted_queries(mut b: Bencher):
+        """Benchmark EzLapper count operations with unsorted queries."""
+
+        @parameter
+        @always_inline
+        fn run():
+            var total_count: UInt32 = 0
+            for query in unsorted_queries:
+                var count = ez_lapper.count(query.start, query.stop)
+                total_count += count
+            keep(total_count)
+
+        b.iter[run]()
+
     # Run benchmarks
     b.bench_function[bench_sorted_queries](BenchId("CPU BITS - Sorted Queries"))
     b.bench_function[bench_unsorted_queries](
         BenchId("CPU BITS - Unsorted Queries")
+    )
+    b.bench_function[bench_ezlapper_sorted_queries](
+        BenchId("EzLapper - Sorted Queries")
+    )
+    b.bench_function[bench_ezlapper_unsorted_queries](
+        BenchId("EzLapper - Unsorted Queries")
     )
 
     print(b)
