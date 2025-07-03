@@ -130,17 +130,53 @@ def benchmark_lapper_count():
         fn run():
             var total_found = 0
             for query in queries:
-                var lb = cpu_lapper._lower_bound(query.start, query.stop)
+                var lb = cpu_lapper._lower_bound(query.start)
                 var c = cpu_lapper._count(lb, query.start, query.stop)
                 total_found += Int(c)
             keep(total_found)
 
         b.iter[run]()
 
+    @parameter
+    @always_inline
+    fn bench_cpu_find_actual(mut b: Bencher):
+        """Benchmark CPU Lapper find operations that return actual intervals."""
+
+        @parameter
+        @always_inline
+        fn run():
+            var total_found = 0
+            for query in queries:
+                var results = List[Interval]()
+                cpu_lapper.find(query.start, query.stop, results)
+                total_found += len(results)
+            keep(total_found)
+
+        b.iter[run]()
+
+    @parameter
+    @always_inline
+    fn bench_ezlapper_find(mut b: Bencher):
+        """Benchmark EzLapper find operations."""
+
+        @parameter
+        @always_inline
+        fn run():
+            var total_found = 0
+            for query in queries:
+                var results = List[Interval]()
+                ez_lapper.find(query.start, query.stop, results)
+                total_found += len(results)
+            keep(total_found)
+
+        b.iter[run]()
+
     # Run CPU benchmarks
-    b.bench_function[bench_cpu_count](BenchId("CPU count overlaps BITS"))
-    b.bench_function[bench_ezlapper_count](BenchId("EzLapper count overlaps"))
-    b.bench_function[bench_cpu_find](BenchId("CPU count overlaps naive"))
+    b.bench_function[bench_cpu_count](BenchId("Lapper - count (BITS)"))
+    b.bench_function[bench_ezlapper_count](BenchId("EzLapper - count (BITS)"))
+    b.bench_function[bench_cpu_find](BenchId("Lapper - count (naive)"))
+    b.bench_function[bench_cpu_find_actual](BenchId("Lapper - find"))
+    b.bench_function[bench_ezlapper_find](BenchId("EzLapper - find"))
 
     @parameter
     if has_accelerator():
@@ -231,9 +267,7 @@ def benchmark_lapper_count():
             )
 
             # Compare with CPU result for validation
-            var cpu_lb = cpu_lapper._lower_bound(
-                queries[0].start, queries[0].stop
-            )
+            var cpu_lb = cpu_lapper._lower_bound(queries[0].start)
             var cpu_count = cpu_lapper._count(
                 cpu_lb, queries[0].start, queries[0].stop
             )
@@ -404,7 +438,7 @@ def benchmark_lapper_count():
 
         for i in range(gpu_sample_queries):
             var query = queries[i]
-            var lb = cpu_lapper._lower_bound(query.start, query.stop)
+            var lb = cpu_lapper._lower_bound(query.start)
             var cpu_count = cpu_lapper._count(lb, query.start, query.stop)
             var gpu_count = host_count_output[i]
             gpu_total += gpu_count
@@ -451,7 +485,7 @@ def benchmark_lapper_count():
 
     for i in range(sample_queries):
         var query = queries[i]
-        var lb = cpu_lapper._lower_bound(query.start, query.stop)
+        var lb = cpu_lapper._lower_bound(query.start)
         var cpu_count = cpu_lapper._count(lb, query.start, query.stop)
         cpu_total += cpu_count
 
@@ -468,6 +502,34 @@ def benchmark_lapper_count():
         # Verify count matches find results
         if cpu_count != find_count:
             print("ERROR: Count mismatch!")
+
+        # Test EzLapper.find() vs Lapper.find() consistency
+        var ez_results = List[Interval]()
+        ez_lapper.find(query.start, query.stop, ez_results)
+        var ez_find_count = len(ez_results)
+
+        if find_count != ez_find_count:
+            print(
+                String(
+                    "ERROR: EzLapper.find() vs Lapper.find() mismatch! Query {}: Lapper={}, EzLapper={}"
+                ).format(i, find_count, ez_find_count)
+            )
+        else:
+            # Verify the intervals are the same (they should be in sorted order)
+            var intervals_match = True
+            for j in range(len(results)):
+                if (results[j].start != ez_results[j].start or 
+                    results[j].stop != ez_results[j].stop or 
+                    results[j].val != ez_results[j].val):
+                    intervals_match = False
+                    break
+            
+            if not intervals_match:
+                print(
+                    String(
+                        "ERROR: EzLapper.find() vs Lapper.find() intervals differ for query {}"
+                    ).format(i)
+                )
 
     print(
         String("Total overlaps found in {} queries: {}").format(
@@ -571,16 +633,96 @@ def benchmark_query_sorting_impact():
 
         b.iter[run]()
 
+    @parameter
+    @always_inline
+    fn bench_lapper_find_sorted_queries(mut b: Bencher):
+        """Benchmark Lapper find operations with sorted queries."""
+
+        @parameter
+        @always_inline
+        fn run():
+            var total_found = 0
+            for query in sorted_queries:
+                var results = List[Interval]()
+                cpu_lapper.find(query.start, query.stop, results)
+                total_found += len(results)
+            keep(total_found)
+
+        b.iter[run]()
+
+    @parameter
+    @always_inline
+    fn bench_lapper_find_unsorted_queries(mut b: Bencher):
+        """Benchmark Lapper find operations with unsorted queries."""
+
+        @parameter
+        @always_inline
+        fn run():
+            var total_found = 0
+            for query in unsorted_queries:
+                var results = List[Interval]()
+                cpu_lapper.find(query.start, query.stop, results)
+                total_found += len(results)
+            keep(total_found)
+
+        b.iter[run]()
+
+    @parameter
+    @always_inline
+    fn bench_ezlapper_find_sorted_queries(mut b: Bencher):
+        """Benchmark EzLapper find operations with sorted queries."""
+
+        @parameter
+        @always_inline
+        fn run():
+            var total_found = 0
+            for query in sorted_queries:
+                var results = List[Interval]()
+                ez_lapper.find(query.start, query.stop, results)
+                total_found += len(results)
+            keep(total_found)
+
+        b.iter[run]()
+
+    @parameter
+    @always_inline
+    fn bench_ezlapper_find_unsorted_queries(mut b: Bencher):
+        """Benchmark EzLapper find operations with unsorted queries."""
+
+        @parameter
+        @always_inline
+        fn run():
+            var total_found = 0
+            for query in unsorted_queries:
+                var results = List[Interval]()
+                ez_lapper.find(query.start, query.stop, results)
+                total_found += len(results)
+            keep(total_found)
+
+        b.iter[run]()
+
     # Run benchmarks
-    b.bench_function[bench_sorted_queries](BenchId("CPU BITS - Sorted Queries"))
+    b.bench_function[bench_sorted_queries](BenchId("Lapper - count (sorted)"))
     b.bench_function[bench_unsorted_queries](
-        BenchId("CPU BITS - Unsorted Queries")
+        BenchId("Lapper - count (unsorted)")
     )
     b.bench_function[bench_ezlapper_sorted_queries](
-        BenchId("EzLapper - Sorted Queries")
+        BenchId("EzLapper - count (sorted)")
     )
     b.bench_function[bench_ezlapper_unsorted_queries](
-        BenchId("EzLapper - Unsorted Queries")
+        BenchId("EzLapper - count (unsorted)")
+    )
+    b.bench_function[bench_lapper_find_sorted_queries](
+        BenchId("Lapper - find (sorted)")
+    )
+    b.bench_function[bench_lapper_find_unsorted_queries](
+        BenchId("Lapper - find (unsorted)")
+    )
+    b.bench_function[bench_ezlapper_find_sorted_queries](
+        BenchId("EzLapper - find (sorted)")
+    )
+    b.bench_function[bench_ezlapper_find_unsorted_queries](
+        BenchId("EzLapper - find (unsorted)")
     )
 
     print(b)

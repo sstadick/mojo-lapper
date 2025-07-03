@@ -381,6 +381,159 @@ def test_count_adjacent_intervals():
     assert_equal(lapper.count(20, 25), 0)  # starts at end of last
 
 
+def test_ezlapper_find_no_overlaps():
+    """Test find with no overlapping intervals."""
+    var intervals = List[Interval]()
+    intervals.append(Interval(5, 10, 0))
+    intervals.append(Interval(15, 20, 0))
+    intervals.append(Interval(25, 30, 0))
+
+    var lapper = EzLapper(intervals)
+    var results = List[Interval]()
+
+    # Query in gap between intervals
+    lapper.find(11, 14, results)
+    assert_equal(len(results), 0)
+
+
+def test_ezlapper_find_single_overlap():
+    """Test find with queries that overlap single intervals."""
+    var intervals = List[Interval]()
+    intervals.append(Interval(5, 10, 100))
+    intervals.append(Interval(15, 20, 200))
+    intervals.append(Interval(25, 30, 300))
+
+    var lapper = EzLapper(intervals)
+
+    # Query overlapping first interval
+    var results1 = List[Interval]()
+    lapper.find(7, 8, results1)
+    assert_equal(len(results1), 1)
+    assert_equal(results1[0].start, 5)
+    assert_equal(results1[0].stop, 10)
+    assert_equal(results1[0].val, 100)
+
+    # Query overlapping second interval
+    var results2 = List[Interval]()
+    lapper.find(17, 18, results2)
+    assert_equal(len(results2), 1)
+    assert_equal(results2[0].start, 15)
+    assert_equal(results2[0].stop, 20)
+    assert_equal(results2[0].val, 200)
+
+    # Query overlapping third interval
+    var results3 = List[Interval]()
+    lapper.find(27, 28, results3)
+    assert_equal(len(results3), 1)
+    assert_equal(results3[0].start, 25)
+    assert_equal(results3[0].stop, 30)
+    assert_equal(results3[0].val, 300)
+
+
+def test_ezlapper_find_multiple_overlaps():
+    """Test find with queries that overlap multiple intervals."""
+    var intervals = List[Interval]()
+    intervals.append(Interval(5, 15, 100))
+    intervals.append(Interval(10, 20, 200))
+    intervals.append(Interval(12, 18, 300))
+    intervals.append(Interval(25, 30, 400))
+
+    var lapper = EzLapper(intervals)
+
+    # Query overlapping first three intervals
+    var results = List[Interval]()
+    lapper.find(8, 17, results)
+    assert_equal(len(results), 3)
+    
+    # Verify we found the correct intervals (sorted by start position)
+    assert_equal(results[0].start, 5)
+    assert_equal(results[0].val, 100)
+    assert_equal(results[1].start, 10)
+    assert_equal(results[1].val, 200)
+    assert_equal(results[2].start, 12)
+    assert_equal(results[2].val, 300)
+
+
+def test_ezlapper_find_contained_intervals():
+    """Test find with intervals that are contained within the query."""
+    var intervals = List[Interval]()
+    intervals.append(Interval(10, 15, 100))
+    intervals.append(Interval(20, 25, 200))
+    intervals.append(Interval(30, 35, 300))
+
+    var lapper = EzLapper(intervals)
+
+    # Query that contains first interval
+    var results1 = List[Interval]()
+    lapper.find(5, 18, results1)
+    assert_equal(len(results1), 1)
+    assert_equal(results1[0].start, 10)
+    assert_equal(results1[0].val, 100)
+
+    # Query that contains multiple intervals
+    var results2 = List[Interval]()
+    lapper.find(5, 38, results2)
+    assert_equal(len(results2), 3)
+
+
+def test_ezlapper_find_exact_boundaries():
+    """Test find with queries that exactly match interval boundaries."""
+    var intervals = List[Interval]()
+    intervals.append(Interval(10, 20, 100))
+    intervals.append(Interval(30, 40, 200))
+
+    var lapper = EzLapper(intervals)
+
+    # Exact matches should find the interval
+    var results1 = List[Interval]()
+    lapper.find(10, 20, results1)
+    assert_equal(len(results1), 1)
+    assert_equal(results1[0].start, 10)
+    assert_equal(results1[0].stop, 20)
+    assert_equal(results1[0].val, 100)
+
+    # Touching boundaries (no overlap with strict inequalities)
+    var results2 = List[Interval]()
+    lapper.find(5, 10, results2)
+    assert_equal(len(results2), 0)  # ends at start of first
+
+    var results3 = List[Interval]()
+    lapper.find(20, 25, results3)
+    assert_equal(len(results3), 0)  # starts at end of first
+
+
+def test_ezlapper_find_vs_count_consistency():
+    """Test that find and count return consistent results."""
+    var intervals = List[Interval]()
+    intervals.append(Interval(1, 10, 100))
+    intervals.append(Interval(5, 15, 200))
+    intervals.append(Interval(8, 12, 300))
+    intervals.append(Interval(11, 20, 400))
+
+    var lapper = EzLapper(intervals)
+
+    # Test several queries to ensure find and count are consistent
+    var test_queries = List[Tuple[UInt32, UInt32]]()
+    test_queries.append((UInt32(9), UInt32(11)))
+    test_queries.append((UInt32(5), UInt32(12)))
+    test_queries.append((UInt32(1), UInt32(20)))
+    test_queries.append((UInt32(0), UInt32(5)))
+    test_queries.append((UInt32(15), UInt32(25)))
+
+    for i in range(len(test_queries)):
+        var query = test_queries[i]
+        var start = query[0]
+        var stop = query[1]
+        
+        var count_result = lapper.count(start, stop)
+        
+        var results = List[Interval]()
+        lapper.find(start, stop, results)
+        var find_result = len(results)
+        
+        assert_equal(count_result, find_result)
+
+
 def main():
     # Interval tests
     test_interval_equality()
@@ -412,5 +565,13 @@ def main():
     test_count_overlapping_intervals()
     test_count_same_start_different_stops()
     test_count_adjacent_intervals()
+
+    # EzLapper find method tests
+    test_ezlapper_find_no_overlaps()
+    test_ezlapper_find_single_overlap()
+    test_ezlapper_find_multiple_overlaps()
+    test_ezlapper_find_contained_intervals()
+    test_ezlapper_find_exact_boundaries()
+    test_ezlapper_find_vs_count_consistency()
 
     print("All EzLapper tests passed!")

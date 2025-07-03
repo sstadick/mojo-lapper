@@ -545,7 +545,7 @@ struct Lapper[*, owns_data: Bool = True](Movable, Sized):
             - Each thread should use its own results list
             - No modification of the Lapper structure during search
         """
-        var idx = self._lower_bound(start, stop)
+        var idx = self._lower_bound(start)
         for i in range(idx, len(self)):
             var s_start = self.starts[i]
             var s_stop = self.stops[i]
@@ -556,7 +556,7 @@ struct Lapper[*, owns_data: Bool = True](Movable, Sized):
                 break
 
     @always_inline
-    fn _lower_bound(read self, start: UInt32, stop: UInt32) -> UInt:
+    fn _lower_bound(read self, start: UInt32) -> UInt:
         return lower_bound(
             Span(self.starts, len(self)), saturating_sub(start, self.max_len)
         )
@@ -728,7 +728,7 @@ fn find_overlaps_kernel(
     var start = keys[idx]
     var stop = keys[idx + 1]
 
-    var lb = lapper._lower_bound(start, stop)
+    var lb = lapper._lower_bound(start)
     barrier()
     var count = lapper._count(lb, start, stop)
     barrier()
