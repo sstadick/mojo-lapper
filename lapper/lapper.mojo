@@ -5,8 +5,9 @@ from lapper.cpu.bsearch import lower_bound, upper_bound
 from gpu.host import DeviceContext, HostBuffer, DeviceBuffer
 from gpu import thread_idx, block_idx, block_dim, warp, barrier
 
+import math
 from memory import UnsafePointer, memcpy
-from sys import is_gpu
+from sys import is_gpu, simdwidthof, compressed_store
 
 
 # TODO: AnyType instead?
@@ -554,6 +555,73 @@ struct Lapper[*, owns_data: Bool = True](Movable, Sized):
                 results.append(Interval(s_start, s_stop, self.vals[i]))
             elif s_start >= stop:
                 break
+
+    fn get(read self, idx: UInt) -> Interval:
+        """Get an interval at a given location.
+
+        No bounds checking.
+        """
+        # TODO: add debug bounds check.
+        return Interval(self.starts[idx], self.stops[idx], self.vals[idx])
+
+    fn find_vectorized(
+        read self,
+        start: UInt32,
+        stop: UInt32,
+        mut results: List[UInt32],
+    ):
+        """Vectorized version of find, returns the indicies of the intervals overlapped.
+        """
+        alias width = simdwidthof[UInt32]()
+        var idx = self._lower_bound(start)
+        var total = self.count(start, stop)
+        results.resize(total + width, 0)
+        var found = 0
+
+        if total < width or len(self) - idx < 2 * width:
+            while found < total and idx < len(self):
+                var s_start = self.starts[idx]
+                var s_stop = self.stops[idx]
+                var overlapped = Interval.overlap(s_start, s_stop, start, stop)
+                results[found] = idx if overlapped else 0
+                found += Int(overlapped)
+                idx += 1
+            results.resize(total, 0)
+            return
+
+        # TODO: align reads like memchr?
+        var length = len(self) - idx
+        var aligned_last = math.align_down(length, width)
+        var starts_ptr = self.starts.offset(idx)
+        var stops_ptr = self.stops.offset(idx)
+
+        var qstart = SIMD[DType.uint32, width](start)
+        var qstop = SIMD[DType.uint32, width](stop)
+
+        alias indices = math.iota[DType.uint32, width](0)
+        alias zero = SIMD[DType.uint32, width](0)
+        var i = 0
+        while found < total and i < aligned_last:
+            var starts_v = starts_ptr.load[width=width](i)
+            var stops_v = stops_ptr.load[width=width](i)
+
+            var overlaps = starts_v < stop and stops_v > start
+            var keep = overlaps.select(indices, zero)
+            compressed_store(keep, results.unsafe_ptr().offset(found), overlaps)
+
+            found += overlaps.reduce_bit_count()
+            i += width
+
+        # TODO: cleanup loop
+        while found < total and i < len(self):
+            var s_start = starts_ptr[i]
+            var s_stop = stops_ptr[i]
+            var overlapped = Interval.overlap(s_start, s_stop, start, stop)
+            results[found] = i if overlapped else 0
+            found += Int(overlapped)
+            i += 1
+
+        results.resize(total, 0)
 
     @always_inline
     fn _lower_bound(read self, start: UInt32) -> UInt:

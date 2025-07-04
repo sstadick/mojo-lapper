@@ -52,15 +52,39 @@ struct EzLapper(Sized):
         stop: UInt32,
         mut results: List[Interval],
     ):
+        # TODO: not worth it for find unless the linear search is way faster
         # Use the underlying Lapper's lower bound calculation
         var first = self.inner._lower_bound(start)
-        
+
         for i in range(first, len(self)):
             # Access interval data from the underlying Lapper
             var s_start = self.inner.starts[i]
             var s_stop = self.inner.stops[i]
             var s_val = self.inner.vals[i]
-            
+
+            # overlap: return a_start < b_stop and a_stop > b_start
+            if Interval.overlap(s_start, s_stop, start, stop):
+                results.append(Interval(s_start, s_stop, s_val))
+            elif s_start >= stop:
+                break
+
+    fn find_vectorized(
+        read self,
+        start: UInt32,
+        stop: UInt32,
+        mut results: List[Interval],
+    ):
+        # TODO: not worth it for find unless the linear search is way faster
+        # Use the underlying Lapper's lower bound calculation
+        var first = self.inner._lower_bound(start)
+
+        for i in range(first, len(self)):
+            # Access interval data from the underlying Lapper
+            var s_start = self.inner.starts[i]
+            var s_stop = self.inner.stops[i]
+            var s_val = self.inner.vals[i]
+
+            # overlap: return a_start < b_stop and a_stop > b_start
             if Interval.overlap(s_start, s_stop, start, stop):
                 results.append(Interval(s_start, s_stop, s_val))
             elif s_start >= stop:
