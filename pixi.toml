@@ -26,5 +26,5 @@ bl = { cmd = "pixi run mojo build --march native -I . -o lapper_bench benchmarks
 
 [dependencies]
 modular = "=25.4.0"
-extramojo = "=0.15.0"
+extramojo = ">=0.16.0,<0.17"
 rattler-build = "*"

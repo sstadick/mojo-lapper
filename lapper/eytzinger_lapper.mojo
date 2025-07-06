@@ -1,8 +1,10 @@
+from memory import UnsafePointer, memcpy
+
 from lapper.lapper import Lapper, Interval
 from lapper.cpu.eytzinger import Eytzinger, eytzinger_with_lookup, lower_bound
 
 
-struct EzLapper(Sized):
+struct EzLapper(Copyable, Movable, Sized):
     var inner: Lapper
     var starts: Eytzinger[DType.uint32]
     var stops: Eytzinger[DType.uint32]
@@ -14,6 +16,11 @@ struct EzLapper(Sized):
         self.inner = inner^
         self.starts = starts
         self.stops = stops
+
+    fn __moveinit__(out self, owned other: Self):
+        self.inner = other.inner^
+        self.starts = other.starts^
+        self.stops = other.stops^
 
     fn __len__(read self) -> Int:
         return len(self.inner)

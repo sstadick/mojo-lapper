@@ -232,7 +232,7 @@ struct Interval(
 
 
 @fieldwise_init
-struct Lapper[*, owns_data: Bool = True](Movable, Sized):
+struct Lapper[*, owns_data: Bool = True](Copyable, Movable, Sized):
     """High-performance data structure for fast interval overlap detection.
 
     Lapper stores a collection of intervals and provides efficient algorithms for
@@ -405,6 +405,19 @@ struct Lapper[*, owns_data: Bool = True](Movable, Sized):
         self.length = other.length
         self.max_len = other.max_len
 
+    fn __copyinit__(out self, read other: Self):
+        print("STOP EVERYTHING COPY")
+        self.starts = UnsafePointer[UInt32].alloc(len(other))
+        memcpy(self.starts, other.starts, len(other))
+        self.stops = UnsafePointer[UInt32].alloc(len(other))
+        memcpy(self.stops, other.stops, len(other))
+        self.vals = UnsafePointer[Int32].alloc(len(other))
+        memcpy(self.vals, other.vals, len(other))
+        self.stops_sorted = UnsafePointer[UInt32].alloc(len(other))
+        memcpy(self.stops_sorted, other.stops_sorted, len(other))
+        self.max_len = other.max_len
+        self.length = other.length
+
     # TODO: it would be great if there were a way to seal the data from host/device buffers
     # The way it works is api-limiting
     @staticmethod
@@ -556,6 +569,7 @@ struct Lapper[*, owns_data: Bool = True](Movable, Sized):
             elif s_start >= stop:
                 break
 
+    @always_inline
     fn get(read self, idx: UInt) -> Interval:
         """Get an interval at a given location.
 
@@ -598,14 +612,14 @@ struct Lapper[*, owns_data: Bool = True](Movable, Sized):
         var qstart = SIMD[DType.uint32, width](start)
         var qstop = SIMD[DType.uint32, width](stop)
 
-        alias indices = math.iota[DType.uint32, width](0)
         alias zero = SIMD[DType.uint32, width](0)
         var i = 0
         while found < total and i < aligned_last:
             var starts_v = starts_ptr.load[width=width](i)
             var stops_v = stops_ptr.load[width=width](i)
 
-            var overlaps = starts_v < stop and stops_v > start
+            var overlaps = (starts_v < qstop) & (stops_v > qstart)
+            var indices = math.iota[DType.uint32, width](UInt32(idx + i))
             var keep = overlaps.select(indices, zero)
             compressed_store(keep, results.unsafe_ptr().offset(found), overlaps)
 
@@ -613,11 +627,11 @@ struct Lapper[*, owns_data: Bool = True](Movable, Sized):
             i += width
 
         # TODO: cleanup loop
-        while found < total and i < len(self):
+        while found < total and i < length:
             var s_start = starts_ptr[i]
             var s_stop = stops_ptr[i]
             var overlapped = Interval.overlap(s_start, s_stop, start, stop)
-            results[found] = i if overlapped else 0
+            results[found] = UInt32(idx + i) if overlapped else 0
             found += Int(overlapped)
             i += 1
 

@@ -13,14 +13,6 @@ features.
 
 ## Essential Commands
 
-### Building the Standard Library
-
-```bash
-./stdlib/scripts/build-stdlib.sh
-```
-
-This creates a `build/stdlib.mojopkg` file in the repo root.
-
 ### Running Tests
 
 ```bash
@@ -161,3 +153,31 @@ guarantees:
 ## Mojo Language Memories
 
 - it's `mut` not `inout`
+
+## Scratch
+
+Add all temp files created for debugging, etc, into a `./scratch` dir. If a file must be created outside of that that is for debugging / temp purposes, prefix it with `_` if possible.
+
+## Memory
+
+Save your state when requested to `./scratch/memory.json`
+
+## Programs
+
+Programs for Claude to run.
+
+### Add Tests
+
+Args:
+    methods: List of methods to add tests for
+
+Return:
+    The result of running `pixi run t --filter <new_test_name>`
+
+save current command and list of methods to add to memeory
+
+for method in methods:
+    add tests in the tests directory with conventions outlined above.
+    run pixi test and confirm they work
+    pop the method off the state
+    save updated state to memory
