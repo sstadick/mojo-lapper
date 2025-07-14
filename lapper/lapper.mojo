@@ -627,8 +627,7 @@ struct Lapper[*, owns_data: Bool = True](Sized):
         # The plus one is to account for the half-open intervals
         var first = lower_bound(Span(self.stops_sorted, len(self)), start + 1)
         var last = lower_bound(Span(self.starts, len(self)), stop)
-        var num_cant_after = len(self) - last
-        return len(self) - first - num_cant_after
+        return last - first
 
 
 fn find_overlaps_kernel(
