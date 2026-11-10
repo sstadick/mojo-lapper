@@ -1,30 +1,50 @@
 [workspace]
 authors = ["Seth Stadick <sstadick@gmail.com>"]
 channels = [
-    "https://conda.modular.com/max-nightly",
+    "https://conda.modular.com/max",
     "https://repo.prefix.dev/modular-community",
-    "https://prefix.dev/pixi-build-backends",
     "conda-forge",
 ]
 platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
 preview = ["pixi-build"]
+requires-pixi = ">=0.76"
 
 [package]
 name = "mojo-lapper"
 license = "Unlicense OR MIT"
+license-file = "LICENSE"
 version = "0.1.0"
 
 [package.build]
-backend = { name = "pixi-build-rattler-build", version = "0.1.*" }
+backend = { name = "pixi-build-mojo", version = "0.*", channels = ["https://prefix.dev/pixi-build-backends", "https://prefix.dev/conda-forge"] }
+
+[package.build.config.pkg]
+name = "lapper"
+path = "lapper"
+
+[package.build-dependencies]
+mojo-compiler = "=1.2.0"
+max-core = "=26.7.0"
+
+[package.host-dependencies]
+mojo-compiler = "=1.2.0"
+max-core = "=26.7.0"
+
+[package.run-dependencies]
+mojo-compiler = "=1.2.0"
+max-core = "=26.7.0"
 
 [tasks]
-t = { cmd = "pixi run mojo test -D ASSERT=all -I . tests" }
-r = { cmd = "pixi run mojo run -I ." }
-bc = { cmd = "pixi run mojo build --march native -I . -o cpu_bench benchmarks/bench_cpu.mojo" }
-bg = { cmd = "pixi run mojo build --march native -I . -o gpu_bench benchmarks/bench_gpu.mojo" }
-bl = { cmd = "pixi run mojo build --march native -I . -o lapper_bench benchmarks/bench_lapper.mojo" }
+t = { cmd = "bash scripts/test.sh" }
+test-consumer = { cmd = "bash scripts/test-consumer.sh" }
+r = { cmd = "mojo run -I ." }
+bc = { cmd = "mojo build --march native -I . -o cpu_bench benchmarks/bench_cpu.mojo" }
+bg = { cmd = "mojo build --march native -I . -o gpu_bench benchmarks/bench_gpu.mojo" }
+bl = { cmd = "mojo build --march native -I . -o lapper_bench benchmarks/bench_lapper.mojo" }
+format = "mojo format --line-length 100 ."
+docs = "python scripts/docs.py"
 
 [dependencies]
-modular = "=25.4.0"
-extramojo = "=0.15.0"
-rattler-build = "*"
+mojo = "=1.2.0"
+mojo-lapper = { path = "." }
+python = ">=3.11,<3.15"

@@ -1,0 +1,44 @@
+name: Package tests
+
+on:
+  push:
+    branches: [main, nightly]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  cpu-and-package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          repository: sstadick/mojoverse
+          ref: 450bc20787ef10748afb538419b0c03ec8732e37
+          path: .ci/mojoverse
+      - uses: prefix-dev/setup-pixi@v0.9.5
+        with:
+          pixi-version: v0.84.1
+      - run: pixi run t
+      - run: pixi run test-consumer
+      - run: pixi run docs
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          MOJOVERSE: ${{ github.workspace }}/.ci/mojoverse
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: docs-site
+          path: target/docs
+          if-no-files-found: error
+      - name: Compile CPU and NVIDIA benchmarks (no GPU execution)
+        if: runner.os == 'Linux' && runner.arch == 'X64'
+        run: |
+          pixi run bc
+          pixi run bg --target-accelerator sm_80
+          pixi run bl --target-accelerator sm_80
