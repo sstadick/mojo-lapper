@@ -212,6 +212,14 @@ struct Interval(
         writer.write("Interval {start: ", self.start, ", stop: ", self.stop, "}")
 
 
+trait IntervalVisitor:
+    """Consume matching intervals synchronously without an intermediate list."""
+
+    def visit(mut self, interval: Interval):
+        """Consume one interval value; do not mutate the index being queried."""
+        ...
+
+
 struct Lapper[*, owns_data: Bool = True](Sized):
     """An interval index for repeated overlap queries.
 
@@ -499,6 +507,72 @@ struct Lapper[*, owns_data: Bool = True](Sized):
                         var i = begin + Int(count_trailing_zeros(mask))
                         mask &= mask - 1
                         results.append(
+                            Interval(
+                                self.starts[unsafe_offset=i],
+                                self.stops[unsafe_offset=i],
+                                self.vals[unsafe_offset=i],
+                            )
+                        )
+                block += 1
+
+    # Keep find's collecting path separate: adapting it to this generic visitor
+    # doubled the spanning fixture's construction time with Mojo 1.2.0, despite
+    # unchanged constructor code. Scan-oracle tests cover both traversals.
+    def visit[Visitor: IntervalVisitor](self, start: UInt32, stop: UInt32, mut visitor: Visitor):
+        """Visit overlaps in start/stop order without collecting a result list.
+
+        Calls visitor.visit once per match, synchronously, with an Interval
+        value including its payload. Uses the same strict overlap predicate
+        as find, including for empty queries. Does not reset visitor state;
+        a query with no matches leaves it unchanged. Visitor errors and early
+        termination are not supported. The visitor must not mutate this index.
+
+        This is a host query API. Borrowed indexes must point to live host
+        buffers, not device memory. Concurrent queries require separate
+        mutable visitors. The visitor type is specialized at compile time.
+        """
+        comptime if not Self.owns_data:
+            # Borrowed buffers retain their existing layout and query path.
+            var idx = self._lower_bound(start, stop)
+            for i in range(Int(idx), len(self)):
+                var s_start = self.starts[unsafe_offset=i]
+                var s_stop = self.stops[unsafe_offset=i]
+                if Interval.overlap(s_start, s_stop, start, stop):
+                    visitor.visit(Interval(s_start, s_stop, self.vals[unsafe_offset=i]))
+                elif s_start >= stop:
+                    break
+        else:
+            var block = Int(upper_bound(Span(self._blocks.prefix_max_ends), start))
+            var starts = Span(unsafe_ptr=self.starts, length=len(self))
+            var stops = Span(unsafe_ptr=self.stops, length=len(self))
+            while block < len(self._blocks.min_ends):
+                var begin = block * BLOCK_SIZE
+                if starts[begin] >= stop:
+                    break
+                if self._blocks.max_tree[self._blocks.leaves + block] <= start:
+                    block = self._blocks.next_above(block, start)
+                    continue
+                var end = min(begin + BLOCK_SIZE, len(self))
+                if self._blocks.min_ends[block] > start:
+                    var active_end = end
+                    if starts[end - 1] >= stop:
+                        active_end = begin + Int(lower_bound(starts[begin:end], stop))
+                    for i in range(begin, active_end):
+                        visitor.visit(
+                            Interval(
+                                self.starts[unsafe_offset=i],
+                                self.stops[unsafe_offset=i],
+                                self.vals[unsafe_offset=i],
+                            )
+                        )
+                    if active_end != end:
+                        break
+                else:
+                    var mask = overlap_mask(starts[begin:end], stops[begin:end], start, stop)
+                    while mask != 0:
+                        var i = begin + Int(count_trailing_zeros(mask))
+                        mask &= mask - 1
+                        visitor.visit(
                             Interval(
                                 self.starts[unsafe_offset=i],
                                 self.stops[unsafe_offset=i],

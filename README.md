@@ -27,6 +27,36 @@ endpoints and an `Int32` payload. Overlap requires `a.start < b.stop` and
 retain a separate copy. `count(start, stop)` returns the number of matches;
 `find(start, stop, results)` appends matching intervals to the destination.
 
+For a reduction, use `visit(start, stop, visitor)` to consume each match as
+it is found. This avoids writing matches into a list and reading them again.
+The visitor is specialized at compile time; calls are synchronous and ordered
+by start, then stop. Its state is not reset between queries. Keep the index
+unchanged during a visit. Borrowed indexes must refer to live host memory.
+
+```mojo {doctest="visitor" global=true}
+from lapper import Interval, IntervalVisitor, Lapper
+from std.testing import assert_equal
+
+@fieldwise_init
+struct SumPayloads(IntervalVisitor):
+    var total: Int
+
+    def visit(mut self, interval: Interval):
+        self.total += Int(interval.val)
+
+def main() raises:
+    var intervals: List[Interval] = [Interval(10, 20, 3), Interval(18, 30, 7)]
+    var index = Lapper(intervals^)
+    var visitor = SumPayloads(0)
+    index.visit(19, 21, visitor)
+    assert_equal(visitor.total, 10)
+    index.visit(30, 40, visitor)
+    assert_equal(visitor.total, 10)
+```
+
+`find` remains available with its existing append semantics. Both APIs use the
+same overlap predicate and ordering. Visitors cannot raise or stop traversal early.
+
 ## CPU query index
 
 Owning CPU indexes use the same forward-query algorithm as **rust-lapper 2.0.1**:
