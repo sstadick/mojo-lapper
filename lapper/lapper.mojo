@@ -1,8 +1,10 @@
 from lapper.cpu.bsearch import lower_bound, upper_bound
+from lapper.cpu.block_index import BlockIndex, BLOCK_SIZE, overlap_mask
 
 from max.gpu.host import DeviceContext, HostBuffer, DeviceBuffer
 from max.gpu import thread_idx, block_idx, block_dim, barrier
 
+from std.bit import count_trailing_zeros
 from std.memory import unsafe_memcpy
 from std.memory.alloc import unsafe_alloc
 from std.sys import is_gpu
@@ -210,7 +212,6 @@ struct Interval(
         writer.write("Interval {start: ", self.start, ", stop: ", self.stop, "}")
 
 
-@fieldwise_init
 struct Lapper[*, owns_data: Bool = True](Sized):
     """An interval index for repeated overlap queries.
 
@@ -218,7 +219,7 @@ struct Lapper[*, owns_data: Bool = True](Sized):
         owns_data: True if the Lapper owns its memory, False if using external pointers.
 
     With owns_data=False, retain all backing buffers until queries and queued
-    GPU work finish.
+    GPU work finish. Do not mutate the indexed arrays after construction.
     """
 
     comptime I = Interval
@@ -242,6 +243,33 @@ struct Lapper[*, owns_data: Bool = True](Sized):
 
     var max_len: UInt32
     """Maximum interval length for bounds optimization."""
+
+    var _blocks: BlockIndex
+
+    def __init__(
+        out self,
+        starts: MutPointer[UInt32, MutUntrackedOrigin],
+        stops: MutPointer[UInt32, MutUntrackedOrigin],
+        vals: MutPointer[Int32, MutUntrackedOrigin],
+        stops_sorted: MutPointer[UInt32, MutUntrackedOrigin],
+        length: UInt,
+        max_len: UInt32,
+    ):
+        """Wrap pre-sorted arrays, taking ownership only when owns_data=True.
+
+        The owning form builds CPU block metadata from stops in start order.
+        The borrowed form does not read pointers during construction, so device
+        buffers are supported. Keep all borrowed buffers alive until use ends.
+        """
+        self.starts = starts
+        self.stops = stops
+        self.vals = vals
+        self.stops_sorted = stops_sorted
+        self.length = length
+        self.max_len = max_len
+        self._blocks = BlockIndex()
+        comptime if Self.owns_data:
+            self._blocks.build(Span(unsafe_ptr=self.stops, length=Int(length)))
 
     # TODO: paramaterized optional eytzinger layout
 
@@ -282,6 +310,7 @@ struct Lapper[*, owns_data: Bool = True](Sized):
         self.vals = unsafe_alloc[Int32](len(intervals))
         self.stops_sorted = unsafe_alloc[UInt32](len(intervals))
         self.max_len = UInt32(0)
+        self._blocks = BlockIndex()
 
         self._fill(intervals^)
 
@@ -299,6 +328,8 @@ struct Lapper[*, owns_data: Bool = True](Sized):
         # which are sorted by starts first, then by stops.
         unsafe_memcpy(dest=self.stops_sorted, src=self.stops, count=len(intervals))
         sort(Span(unsafe_ptr=self.stops_sorted, length=len(intervals)))
+        comptime if Self.owns_data:
+            self._blocks.build(Span(unsafe_ptr=self.stops, length=len(intervals)))
 
     # TODO: it would be great if there were a way to seal the data from host/device buffers
     # The way it works is api-limiting
@@ -426,15 +457,55 @@ struct Lapper[*, owns_data: Bool = True](Sized):
             - Each thread should use its own results list
             - No modification of the Lapper structure during search
         """
-        var idx = self._lower_bound(start, stop)
-        for i in range(Int(idx), len(self)):
-            var s_start = self.starts[unsafe_offset=i]
-            var s_stop = self.stops[unsafe_offset=i]
-            # ref iv = self.intervals[i]
-            if Interval.overlap(s_start, s_stop, start, stop):
-                results.append(Interval(s_start, s_stop, self.vals[unsafe_offset=i]))
-            elif s_start >= stop:
-                break
+        comptime if not Self.owns_data:
+            # Borrowed buffers retain their existing layout and query path.
+            var idx = self._lower_bound(start, stop)
+            for i in range(Int(idx), len(self)):
+                var s_start = self.starts[unsafe_offset=i]
+                var s_stop = self.stops[unsafe_offset=i]
+                if Interval.overlap(s_start, s_stop, start, stop):
+                    results.append(Interval(s_start, s_stop, self.vals[unsafe_offset=i]))
+                elif s_start >= stop:
+                    break
+        else:
+            var block = Int(upper_bound(Span(self._blocks.prefix_max_ends), start))
+            var starts = Span(unsafe_ptr=self.starts, length=len(self))
+            var stops = Span(unsafe_ptr=self.stops, length=len(self))
+            while block < len(self._blocks.min_ends):
+                var begin = block * BLOCK_SIZE
+                if starts[begin] >= stop:
+                    break
+                if self._blocks.max_tree[self._blocks.leaves + block] <= start:
+                    block = self._blocks.next_above(block, start)
+                    continue
+                var end = min(begin + BLOCK_SIZE, len(self))
+                if self._blocks.min_ends[block] > start:
+                    var active_end = end
+                    if starts[end - 1] >= stop:
+                        active_end = begin + Int(lower_bound(starts[begin:end], stop))
+                    for i in range(begin, active_end):
+                        results.append(
+                            Interval(
+                                self.starts[unsafe_offset=i],
+                                self.stops[unsafe_offset=i],
+                                self.vals[unsafe_offset=i],
+                            )
+                        )
+                    if active_end != end:
+                        break
+                else:
+                    var mask = overlap_mask(starts[begin:end], stops[begin:end], start, stop)
+                    while mask != 0:
+                        var i = begin + Int(count_trailing_zeros(mask))
+                        mask &= mask - 1
+                        results.append(
+                            Interval(
+                                self.starts[unsafe_offset=i],
+                                self.stops[unsafe_offset=i],
+                                self.vals[unsafe_offset=i],
+                            )
+                        )
+                block += 1
 
     @always_inline
     def _lower_bound(self, start: UInt32, stop: UInt32) -> UInt:

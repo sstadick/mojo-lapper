@@ -106,8 +106,10 @@ def upper_bound[dtype: DType](values: Span[Scalar[dtype], _], key: Scalar[dtype]
     var right = len(values)
 
     while left < right:
-        var mid = left + (right - left) // 2
-        if values[mid] <= key:
+        # 0 <= left <= mid < right <= len(values). Use the proven bound
+        # rather than rebuilding a checked Span access at every probe.
+        var mid = left + ((right - left) >> 1)
+        if values.unsafe_ptr()[unsafe_offset=mid] <= key:
             left = mid + 1
         else:
             right = mid

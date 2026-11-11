@@ -168,6 +168,22 @@ def test_lapper_single_interval() raises:
     assert_equal(results[0].stop, 10)
     assert_equal(results[0].val, 100)
 
+    # The six-argument borrowed constructor must retain append semantics and
+    # must not free its owner's arrays when the view goes out of scope.
+    var borrowed = Lapper[owns_data=False](
+        lapper.starts,
+        lapper.stops,
+        lapper.vals,
+        lapper.stops_sorted,
+        lapper.length,
+        lapper.max_len,
+    )
+    borrowed.find(7, 8, results)
+    assert_equal(len(results), 2)
+    assert_equal(results[1].val, 100)
+    # Untracked raw pointers do not extend the owner's lifetime in Mojo.
+    assert_equal(lapper.count(7, 8), 1)
+
 
 def test_lapper_multiple_intervals() raises:
     """Test Lapper with multiple intervals."""
@@ -495,6 +511,45 @@ def test_find_and_count_match_scan() raises:
     assert_equal(len(results), 1)
     assert_equal(results[0].val, 7)
     assert_equal(high.count(UInt32.MAX - 2, UInt32.MAX), 1)
+
+
+def test_find_block_boundaries_and_spanning_intervals() raises:
+    """Compare ordered payloads with a scan across sparse, dense and mixed blocks."""
+    for n in [1, 7, 31, 32, 33, 63, 64, 65, 127, 128, 129, 511, 512, 513]:
+        for shape in range(4):
+            for base in [UInt32(0), UInt32.MAX - UInt32(n * 8 + 100)]:
+                var intervals = List[Interval]()
+                for i in range(n):
+                    var start = base + UInt32(i * 8)
+                    var stop = start + 3
+                    if shape == 1 and i == 0:
+                        stop = base + UInt32(n * 8 + 10)
+                    elif shape == 2:
+                        stop = base + UInt32(n * 8 + 10)
+                    elif shape == 3:
+                        # Live leaves separated by increasing but dead maxima;
+                        # mixed lanes also include zero-length intervals.
+                        stop = start + UInt32((i * 17) % 23)
+                        if i % 97 == 0:
+                            stop = base + UInt32(n * 8 + 10)
+                    intervals.append(Interval(start, stop, Int32(i * 3 - 7)))
+                var lapper = Lapper(intervals.copy())
+                for q in range(0, n * 8 + 20, 7):
+                    for width in [0, 1, 13, n * 8 + 20 - q]:
+                        var start = base + UInt32(q)
+                        var stop = start + UInt32(width)
+                        var results: List[Interval] = [Interval(0, 0, -99)]
+                        lapper.find(start, stop, results)
+                        var expected = 1
+                        for iv in intervals:
+                            if iv.start < stop and iv.stop > start:
+                                assert_true(expected < len(results))
+                                assert_equal(results[expected].start, iv.start)
+                                assert_equal(results[expected].stop, iv.stop)
+                                assert_equal(results[expected].val, iv.val)
+                                expected += 1
+                        assert_equal(len(results), expected)
+                        assert_equal(results[0].val, -99)
 
 
 def main() raises:
