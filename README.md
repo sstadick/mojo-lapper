@@ -1,3 +1,11 @@
+> [!IMPORTANT]
+> **Development has moved to [Mojoverse](https://github.com/sstadick/mojoverse).**
+> See [mojo-lapper in Mojoverse](https://github.com/sstadick/mojoverse/tree/main/packages/mojo-lapper)
+> for current code, documentation, and installation instructions. Please open new issues and
+> pull requests in Mojoverse.
+>
+> This repository is retained for reference; the README below describes the legacy standalone version.
+
 # mojo-lapper
 
 Interval overlap queries for Mojo, with CPU queries and GPU batch counting.
